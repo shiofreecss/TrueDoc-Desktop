@@ -30,9 +30,21 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        
+        <!-- Style for the drop target -->
+        <Style x:Key="DropTargetStyle" TargetType="Border">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#DDDDDD"/>
+            <Setter Property="Background" Value="White"/>
+            <Style.Triggers>
+                <Trigger Property="AllowDrop" Value="True">
+                    <Setter Property="Background" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     
-    <Grid>
+    <Grid AllowDrop="True">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="2*"/>
             <ColumnDefinition Width="Auto"/>
@@ -40,7 +52,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Left side - Document Preview -->
-        <Grid Grid.Column="0" Background="#F5F5F5">
+        <Grid Grid.Column="0" Background="#F5F5F5" AllowDrop="True">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -49,18 +61,19 @@
             <TextBlock Grid.Row="0" Text="Document Preview" FontSize="18" FontWeight="SemiBold" Margin="10"/>
             
             <!-- Preview Area -->
-            <Border Grid.Row="1" BorderThickness="1" BorderBrush="#DDDDDD" Margin="10" Background="White">
-                <Grid x:Name="PreviewContainer">
+            <Border Grid.Row="1" x:Name="PreviewBorder" Style="{StaticResource DropTargetStyle}" BorderThickness="1" BorderBrush="#DDDDDD" Margin="10" Background="White" AllowDrop="True">
+                <Grid x:Name="PreviewContainer" AllowDrop="True">
                     <!-- WebView2 for PDF preview -->
-                    <wv2:WebView2 x:Name="PdfViewer" Visibility="Collapsed"/>
+                    <wv2:WebView2 x:Name="PdfViewer" Visibility="Collapsed" AllowDrop="True"/>
                     
                     <!-- Image preview -->
-                    <Image x:Name="ImageViewer" Stretch="Uniform" Visibility="Collapsed"/>
+                    <Image x:Name="ImageViewer" Stretch="Uniform" Visibility="Collapsed" AllowDrop="True"/>
                     
                     <!-- No document loaded placeholder -->
-                    <StackPanel x:Name="NoDocumentPanel" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <StackPanel x:Name="NoDocumentPanel" VerticalAlignment="Center" HorizontalAlignment="Center" AllowDrop="True">
                         <TextBlock Text="No document loaded" FontSize="16" Foreground="#757575" HorizontalAlignment="Center"/>
                         <TextBlock Text="Upload a PDF or image to get started" FontSize="14" Foreground="#9E9E9E" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Or drag and drop files here" FontSize="14" Foreground="#4285F4" Margin="0,10,0,0" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
             </Border>

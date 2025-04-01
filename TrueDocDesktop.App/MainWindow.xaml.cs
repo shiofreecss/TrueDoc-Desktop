@@ -36,6 +36,187 @@ public partial class MainWindow : Window
 
         // Add Settings option to window menu
         AddSettingsMenu();
+        
+        // Initialize drag and drop functionality
+        InitializeDragAndDrop();
+    }
+
+    private void InitializeDragAndDrop()
+    {
+        // Enable drag and drop for the main window
+        this.AllowDrop = true;
+        this.DragEnter += MainWindow_DragEnter;
+        this.DragOver += MainWindow_DragOver;
+        this.Drop += MainWindow_Drop;
+        this.DragLeave += MainWindow_DragLeave;
+        
+        // Enable drag and drop for the preview container
+        PreviewContainer.AllowDrop = true;
+        PreviewContainer.DragOver += PreviewContainer_DragOver;
+        PreviewContainer.Drop += PreviewContainer_Drop;
+    }
+
+    private void MainWindow_DragEnter(object sender, DragEventArgs e)
+    {
+        Console.WriteLine("MainWindow DragEnter triggered");
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            if (files.Length > 0 && IsValidFileType(files[0]))
+            {
+                e.Effects = DragDropEffects.Copy;
+                // Highlight drop area
+                PreviewBorder.BorderBrush = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#4285F4"));
+                PreviewBorder.BorderThickness = new Thickness(2);
+            }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+            }
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+        e.Handled = true;
+    }
+
+    private void MainWindow_DragOver(object sender, DragEventArgs e)
+    {
+        Console.WriteLine("MainWindow DragOver triggered");
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            if (files.Length > 0 && IsValidFileType(files[0]))
+            {
+                e.Effects = DragDropEffects.Copy;
+                // Keep highlight
+                PreviewBorder.BorderBrush = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#4285F4"));
+                PreviewBorder.BorderThickness = new Thickness(2);
+            }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+            }
+        }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+        e.Handled = true;
+    }
+
+    private void MainWindow_Drop(object sender, DragEventArgs e)
+    {
+        Console.WriteLine("MainWindow Drop triggered");
+        
+        // Reset border
+        PreviewBorder.BorderBrush = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#DDDDDD"));
+        PreviewBorder.BorderThickness = new Thickness(1);
+        
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            if (files.Length > 0 && IsValidFileType(files[0]))
+            {
+                LoadDocument(files[0]);
+                e.Handled = true;
+            }
+        }
+    }
+
+    private void MainWindow_DragLeave(object sender, DragEventArgs e)
+    {
+        Console.WriteLine("MainWindow DragLeave triggered");
+        
+        // Reset border
+        PreviewBorder.BorderBrush = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#DDDDDD"));
+        PreviewBorder.BorderThickness = new Thickness(1);
+        
+        e.Handled = true;
+    }
+
+    private void PreviewContainer_DragOver(object sender, DragEventArgs e)
+    {
+        // Check if the dragged data contains file(s)
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            // Get the files from the dragged data
+            string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            
+            // Check if there's at least one file and if it's a PDF or image
+            if (files.Length > 0 && IsValidFileType(files[0]))
+            {
+                e.Effects = DragDropEffects.Copy;
+                e.Handled = true;
+                // Debug info
+                Console.WriteLine($"Valid file being dragged: {files[0]}");
+                return;
+            }
+            else
+            {
+                // Debug info about invalid files
+                if (files.Length > 0)
+                {
+                    Console.WriteLine($"Invalid file type: {files[0]}, extension: {Path.GetExtension(files[0])}");
+                }
+            }
+        }
+        else
+        {
+            // Debug what formats are available
+            string[] formats = e.Data.GetFormats();
+            Console.WriteLine($"Available formats: {string.Join(", ", formats)}");
+        }
+        
+        // If we get here, the data is not acceptable
+        e.Effects = DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void PreviewContainer_Drop(object sender, DragEventArgs e)
+    {
+        Console.WriteLine("Drop event triggered");
+        
+        // Check if the dropped data contains file(s)
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            // Get the files from the dropped data
+            string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            
+            Console.WriteLine($"Files dropped: {files.Length}");
+            
+            // If there's at least one file and it's a valid type, load it
+            if (files.Length > 0 && IsValidFileType(files[0]))
+            {
+                Console.WriteLine($"Loading document: {files[0]}");
+                LoadDocument(files[0]);
+                e.Handled = true;
+            }
+            else if (files.Length > 0)
+            {
+                Console.WriteLine($"Invalid file dropped: {files[0]}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("Drop data doesn't contain file drop format");
+        }
+    }
+
+    private bool IsValidFileType(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+            return false;
+
+        string extension = Path.GetExtension(filePath).ToLower();
+        
+        // Check if file is PDF or a valid image type
+        return extension == ".pdf" || 
+               extension == ".jpg" || 
+               extension == ".jpeg" || 
+               extension == ".png" || 
+               extension == ".bmp";
     }
 
     private void AddSettingsMenu()
