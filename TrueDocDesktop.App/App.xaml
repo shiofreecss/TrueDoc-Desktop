@@ -1,0 +1,21 @@
+﻿<Application x:Class="TrueDocDesktop.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:TrueDocDesktop.App"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Add any global resources or styles here -->
+            </ResourceDictionary.MergedDictionaries>
+            
+            <!-- Application theme colors -->
+            <SolidColorBrush x:Key="PrimaryColor" Color="#4285F4"/>
+            <SolidColorBrush x:Key="PrimaryDarkColor" Color="#3367D6"/>
+            <SolidColorBrush x:Key="AccentColor" Color="#EA4335"/>
+            <SolidColorBrush x:Key="BackgroundColor" Color="#F5F5F5"/>
+            <SolidColorBrush x:Key="TextPrimaryColor" Color="#212121"/>
+            <SolidColorBrush x:Key="TextSecondaryColor" Color="#757575"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

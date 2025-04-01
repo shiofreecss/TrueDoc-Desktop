@@ -1,0 +1,125 @@
+﻿<Window x:Class="TrueDocDesktop.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:TrueDocDesktop.App"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        mc:Ignorable="d"
+        Title="TrueDoc Desktop" Height="700" Width="1200" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <Style x:Key="ButtonStyle" TargetType="Button">
+            <Setter Property="Margin" Value="0,5,0,5"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Background" Value="#4285F4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#3367D6"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="1*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left side - Document Preview -->
+        <Grid Grid.Column="0" Background="#F5F5F5">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Document Preview" FontSize="18" FontWeight="SemiBold" Margin="10"/>
+            
+            <!-- Preview Area -->
+            <Border Grid.Row="1" BorderThickness="1" BorderBrush="#DDDDDD" Margin="10" Background="White">
+                <Grid x:Name="PreviewContainer">
+                    <!-- WebView2 for PDF preview -->
+                    <wv2:WebView2 x:Name="PdfViewer" Visibility="Collapsed"/>
+                    
+                    <!-- Image preview -->
+                    <Image x:Name="ImageViewer" Stretch="Uniform" Visibility="Collapsed"/>
+                    
+                    <!-- No document loaded placeholder -->
+                    <StackPanel x:Name="NoDocumentPanel" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="No document loaded" FontSize="16" Foreground="#757575" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Upload a PDF or image to get started" FontSize="14" Foreground="#9E9E9E" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Splitter -->
+        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="#DDDDDD"/>
+
+        <!-- Right side - Tools Panel -->
+        <Grid Grid.Column="2" Background="White">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Tools" FontSize="18" FontWeight="SemiBold" Margin="10"/>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="15">
+                    <!-- Document Upload Section -->
+                    <GroupBox Header="Upload Document" Padding="10" Margin="0,0,0,15">
+                        <StackPanel>
+                            <Button x:Name="BtnUploadPdf" Content="Upload PDF" Style="{StaticResource ButtonStyle}" Click="BtnUploadPdf_Click"/>
+                            <Button x:Name="BtnUploadImage" Content="Upload Image" Style="{StaticResource ButtonStyle}" Click="BtnUploadImage_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Document Info Section -->
+                    <GroupBox Header="Document Information" Padding="10" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="Filename:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtFilename" Text="-" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="File Type:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtFileType" Text="-" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="File Size:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtFileSize" Text="-" Margin="0,0,0,10"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Actions Section -->
+                    <GroupBox Header="Actions" Padding="10" Margin="0,0,0,15">
+                        <StackPanel>
+                            <Button x:Name="BtnSaveAs" Content="Save As..." Style="{StaticResource ButtonStyle}" Click="BtnSaveAs_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnPrint" Content="Print" Style="{StaticResource ButtonStyle}" Click="BtnPrint_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnOcr" Content="Extract Data with AI" Style="{StaticResource ButtonStyle}" Click="BtnOcr_Click" IsEnabled="False"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- OCR Results Section -->
+                    <GroupBox Header="AI Text Extraction Results" Padding="10" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBox x:Name="TxtOcrResults" TextWrapping="Wrap" Height="100" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" IsReadOnly="True" Background="#F8F8F8" Margin="0,5"/>
+                            <Button x:Name="BtnCopyText" Content="Copy Text" Style="{StaticResource ButtonStyle}" Click="BtnCopyText_Click" IsEnabled="False"/>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Window>
