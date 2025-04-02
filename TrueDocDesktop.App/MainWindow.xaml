@@ -100,9 +100,45 @@
                             <Button x:Name="BtnUploadImage" Content="Upload Image" Style="{StaticResource ButtonStyle}" Click="BtnUploadImage_Click"/>
                         </StackPanel>
                     </GroupBox>
-
+                    
+                    <!-- PDF Operations Section -->
+                    <GroupBox x:Name="PdfOperationsGroup" Header="PDF Operations" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
+                        <StackPanel>
+                            <Button x:Name="BtnConvertToImage" Content="Convert to Image" Style="{StaticResource ButtonStyle}" Click="BtnConvertToImage_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnSetPassword" Content="Set Password" Style="{StaticResource ButtonStyle}" Click="BtnSetPassword_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnRemovePassword" Content="Remove Password" Style="{StaticResource ButtonStyle}" Click="BtnRemovePassword_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnSignPdf" Content="Sign Document" Style="{StaticResource ButtonStyle}" Click="BtnSignPdf_Click" IsEnabled="False"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- Image Operations Section -->
+                    <GroupBox x:Name="ImageOperationsGroup" Header="Image Operations" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
+                        <StackPanel>
+                            <Button x:Name="BtnConvertToPdf" Content="Convert to PDF" Style="{StaticResource ButtonStyle}" Click="BtnConvertToPdf_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnIncreaseDpi" Content="Increase DPI" Style="{StaticResource ButtonStyle}" Click="BtnIncreaseDpi_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnCropImage" Content="Crop Image" Style="{StaticResource ButtonStyle}" Click="BtnCropImage_Click" IsEnabled="False"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- Actions Section -->
+                    <GroupBox x:Name="ActionsGroup" Header="Actions" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
+                        <StackPanel>
+                            <Button x:Name="BtnSaveAs" Content="Save As..." Style="{StaticResource ButtonStyle}" Click="BtnSaveAs_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnPrint" Content="Print" Style="{StaticResource ButtonStyle}" Click="BtnPrint_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnOcr" Content="Extract Data with AI" Style="{StaticResource ButtonStyle}" Click="BtnOcr_Click" IsEnabled="False"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
+                    <!-- OCR Results Section -->
+                    <GroupBox x:Name="OcrResultsGroup" Header="AI Text Extraction Results" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBox x:Name="TxtOcrResults" TextWrapping="Wrap" Height="100" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" IsReadOnly="True" Background="#F8F8F8" Margin="0,5"/>
+                            <Button x:Name="BtnCopyText" Content="Copy Text" Style="{StaticResource ButtonStyle}" Click="BtnCopyText_Click" IsEnabled="False"/>
+                        </StackPanel>
+                    </GroupBox>
+                    
                     <!-- Document Info Section -->
-                    <GroupBox Header="Document Information" Padding="10" Margin="0,0,0,15">
+                    <GroupBox x:Name="DocumentInfoGroup" Header="Document Information" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock Text="Filename:" FontWeight="SemiBold" Margin="0,5,0,2"/>
                             <TextBlock x:Name="TxtFilename" Text="-" TextWrapping="Wrap" Margin="0,0,0,10"/>
@@ -112,23 +148,30 @@
                             
                             <TextBlock Text="File Size:" FontWeight="SemiBold" Margin="0,5,0,2"/>
                             <TextBlock x:Name="TxtFileSize" Text="-" Margin="0,0,0,10"/>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <!-- Actions Section -->
-                    <GroupBox Header="Actions" Padding="10" Margin="0,0,0,15">
-                        <StackPanel>
-                            <Button x:Name="BtnSaveAs" Content="Save As..." Style="{StaticResource ButtonStyle}" Click="BtnSaveAs_Click" IsEnabled="False"/>
-                            <Button x:Name="BtnPrint" Content="Print" Style="{StaticResource ButtonStyle}" Click="BtnPrint_Click" IsEnabled="False"/>
-                            <Button x:Name="BtnOcr" Content="Extract Data with AI" Style="{StaticResource ButtonStyle}" Click="BtnOcr_Click" IsEnabled="False"/>
-                        </StackPanel>
-                    </GroupBox>
-                    
-                    <!-- OCR Results Section -->
-                    <GroupBox Header="AI Text Extraction Results" Padding="10" Margin="0,0,0,15">
-                        <StackPanel>
-                            <TextBox x:Name="TxtOcrResults" TextWrapping="Wrap" Height="100" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" IsReadOnly="True" Background="#F8F8F8" Margin="0,5"/>
-                            <Button x:Name="BtnCopyText" Content="Copy Text" Style="{StaticResource ButtonStyle}" Click="BtnCopyText_Click" IsEnabled="False"/>
+                            
+                            <TextBlock Text="Created Date:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtCreatedDate" Text="-" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="Modified Date:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtModifiedDate" Text="-" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="Dimensions:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtDimensions" Text="-" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="Page Count:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtPageCount" Text="-" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="Title:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtTitle" Text="-" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="Encryption:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtEncryption" Text="-" Margin="0,0,0,10"/>
+                            
+                            <TextBlock x:Name="LabelResolution" Text="Resolution (DPI):" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtResolution" Text="-" Margin="0,0,0,10"/>
+                            
+                            <TextBlock x:Name="LabelColorDepth" Text="Color Depth:" FontWeight="SemiBold" Margin="0,5,0,2"/>
+                            <TextBlock x:Name="TxtColorDepth" Text="-" Margin="0,0,0,10"/>
                         </StackPanel>
                     </GroupBox>
                 </StackPanel>

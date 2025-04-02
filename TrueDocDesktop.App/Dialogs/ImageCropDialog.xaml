@@ -1,0 +1,61 @@
+<Window x:Class="TrueDocDesktop.App.Dialogs.ImageCropDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Crop Image" Height="600" Width="800" WindowStartupLocation="CenterOwner">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Image Container with Crop Overlay -->
+        <Border Grid.Row="0" x:Name="ImageContainer" Margin="10" Background="#F0F0F0" ClipToBounds="True">
+            <Canvas x:Name="CropCanvas">
+                <Image x:Name="ImageSource" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                
+                <!-- Crop Selection Rectangle -->
+                <Rectangle x:Name="CropSelection" Stroke="#4285F4" StrokeThickness="2" Fill="#304285F4" 
+                           Canvas.Left="0" Canvas.Top="0" Width="0" Height="0" 
+                           MouseLeftButtonDown="CropSelection_MouseLeftButtonDown"
+                           MouseMove="CropSelection_MouseMove"
+                           MouseLeftButtonUp="CropSelection_MouseLeftButtonUp"/>
+                
+                <!-- Resize Handles -->
+                <Rectangle x:Name="TopLeftHandle" Width="10" Height="10" Fill="#4285F4" 
+                           Canvas.Left="0" Canvas.Top="0" Visibility="Collapsed"
+                           MouseLeftButtonDown="ResizeHandle_MouseLeftButtonDown"
+                           MouseMove="ResizeHandle_MouseMove"
+                           MouseLeftButtonUp="ResizeHandle_MouseLeftButtonUp"/>
+                
+                <Rectangle x:Name="TopRightHandle" Width="10" Height="10" Fill="#4285F4" 
+                           Canvas.Left="0" Canvas.Top="0" Visibility="Collapsed"
+                           MouseLeftButtonDown="ResizeHandle_MouseLeftButtonDown"
+                           MouseMove="ResizeHandle_MouseMove"
+                           MouseLeftButtonUp="ResizeHandle_MouseLeftButtonUp"/>
+                
+                <Rectangle x:Name="BottomLeftHandle" Width="10" Height="10" Fill="#4285F4" 
+                           Canvas.Left="0" Canvas.Top="0" Visibility="Collapsed"
+                           MouseLeftButtonDown="ResizeHandle_MouseLeftButtonDown"
+                           MouseMove="ResizeHandle_MouseMove"
+                           MouseLeftButtonUp="ResizeHandle_MouseLeftButtonUp"/>
+                
+                <Rectangle x:Name="BottomRightHandle" Width="10" Height="10" Fill="#4285F4" 
+                           Canvas.Left="0" Canvas.Top="0" Visibility="Collapsed"
+                           MouseLeftButtonDown="ResizeHandle_MouseLeftButtonDown"
+                           MouseMove="ResizeHandle_MouseMove"
+                           MouseLeftButtonUp="ResizeHandle_MouseLeftButtonUp"/>
+            </Canvas>
+        </Border>
+        
+        <!-- Control Panel -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="10">
+            <TextBlock VerticalAlignment="Center" Margin="0,0,10,0">
+                <Run Text="Selected Area: "/>
+                <Run x:Name="SelectedAreaText" Text="0 x 0"/>
+            </TextBlock>
+            <Button x:Name="BtnReset" Content="Reset" Width="80" Height="30" Margin="0,0,10,0" Click="BtnReset_Click"/>
+            <Button x:Name="BtnCancel" Content="Cancel" Width="80" Height="30" Margin="0,0,10,0" Click="BtnCancel_Click"/>
+            <Button x:Name="BtnCrop" Content="Crop" Width="80" Height="30" Click="BtnCrop_Click" IsEnabled="False"/>
+        </StackPanel>
+    </Grid>
+</Window> 
