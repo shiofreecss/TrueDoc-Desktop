@@ -42,11 +42,22 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <!-- Style for the ComboBox in extract panel -->
+        <Style x:Key="ComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Margin" Value="0,5,0,5"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="BorderBrush" Value="#DDDDDD"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
     </Window.Resources>
     
     <Grid AllowDrop="True">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*"/>
+            <ColumnDefinition Width="3*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="1*"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="1*"/>
         </Grid.ColumnDefinitions>
@@ -79,17 +90,24 @@
             </Border>
         </Grid>
 
-        <!-- Splitter -->
+        <!-- Splitter between Preview and Tools Panel -->
         <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="#DDDDDD"/>
 
-        <!-- Right side - Tools Panel -->
+        <!-- Tools Panel -->
         <Grid Grid.Column="2" Background="White">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Text="Tools" FontSize="18" FontWeight="SemiBold" Margin="10"/>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Tools" FontSize="18" FontWeight="SemiBold" Margin="10"/>
+                <Button x:Name="BtnToggleTools" Grid.Column="1" Content="&gt;&gt;" Margin="0,5,10,5" Padding="8,3" Click="BtnToggleTools_Click"/>
+            </Grid>
 
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="15">
@@ -126,14 +144,6 @@
                             <Button x:Name="BtnSaveAs" Content="Save As..." Style="{StaticResource ButtonStyle}" Click="BtnSaveAs_Click" IsEnabled="False"/>
                             <Button x:Name="BtnPrint" Content="Print" Style="{StaticResource ButtonStyle}" Click="BtnPrint_Click" IsEnabled="False"/>
                             <Button x:Name="BtnOcr" Content="Extract Data with AI" Style="{StaticResource ButtonStyle}" Click="BtnOcr_Click" IsEnabled="False"/>
-                        </StackPanel>
-                    </GroupBox>
-                    
-                    <!-- OCR Results Section -->
-                    <GroupBox x:Name="OcrResultsGroup" Header="AI Text Extraction Results" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
-                        <StackPanel>
-                            <TextBox x:Name="TxtOcrResults" TextWrapping="Wrap" Height="100" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" IsReadOnly="True" Background="#F8F8F8" Margin="0,5"/>
-                            <Button x:Name="BtnCopyText" Content="Copy Text" Style="{StaticResource ButtonStyle}" Click="BtnCopyText_Click" IsEnabled="False"/>
                         </StackPanel>
                     </GroupBox>
                     
@@ -177,5 +187,97 @@
                 </StackPanel>
             </ScrollViewer>
         </Grid>
+        
+        <!-- Splitter between Tools and Extract Panel -->
+        <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="#DDDDDD"/>
+        
+        <!-- AI Extraction Panel -->
+        <Grid Grid.Column="4" Background="#F8F9FA" x:Name="ExtractPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Extract Data with AI" FontSize="18" FontWeight="SemiBold" Margin="10"/>
+                <Button x:Name="BtnToggleExtract" Grid.Column="1" Content="&gt;&gt;" Margin="0,5,10,5" Padding="8,3" Click="BtnOcr_Click"/>
+            </Grid>
+            
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="10,0,10,0">
+                    <!-- Document Type Selection -->
+                    <GroupBox Header="Document Type" Padding="10" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Select document type:" Margin="0,5,0,5"/>
+                            <ComboBox x:Name="CmbDocumentType" Style="{StaticResource ComboBoxStyle}">
+                                <ComboBoxItem Content="General" IsSelected="True"/>
+                                <ComboBoxItem Content="Business Card"/>
+                                <ComboBoxItem Content="Receipt"/>
+                                <ComboBoxItem Content="Purchase Order"/>
+                                <ComboBoxItem Content="Invoice"/>
+                                <ComboBoxItem Content="Delivery Order"/>
+                                <ComboBoxItem Content="Bankstatement"/>
+                                <ComboBoxItem Content="POSBBankStatement"/>
+                                <ComboBoxItem Content="OCBCBankStatement"/>
+                                <ComboBoxItem Content="TextDocument"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- AI Extraction Options -->
+                    <GroupBox Header="Extraction Settings" Padding="10" Margin="0,0,0,10">
+                        <StackPanel>
+                            <CheckBox x:Name="ChkIncludeHandwritten" Content="Include handwritten content" IsChecked="True" Margin="0,5,0,5"/>
+                            <CheckBox x:Name="ChkFormatDates" Content="Format dates (DD/MM/YYYY)" IsChecked="True" Margin="0,5,0,5"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Extraction Results -->
+                    <GroupBox Header="Results" Padding="10" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            
+                            <TextBox x:Name="TxtExtractionResults" 
+                                     Grid.Row="0"
+                                     TextWrapping="Wrap" 
+                                     AcceptsReturn="True" 
+                                     VerticalScrollBarVisibility="Auto"
+                                     Height="120"
+                                     IsReadOnly="True"
+                                     Background="#FAFAFA"
+                                     Padding="8"/>
+                            
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                                <Button x:Name="BtnCopyResults" Content="Copy" Padding="12,5" Margin="0,0,5,0" Click="BtnCopyResults_Click"/>
+                                <Button x:Name="BtnSaveResults" Content="Save JSON" Padding="12,5" Click="BtnSaveResults_Click"/>
+                            </StackPanel>
+                        </Grid>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Button x:Name="BtnExtractData" 
+                    Grid.Row="2" 
+                    Content="Extract Data" 
+                    Style="{StaticResource ButtonStyle}"
+                    Margin="10" 
+                    Click="BtnExtractData_Click"/>
+        </Grid>
+        
+        <!-- Floating buttons for panels when they are hidden -->
+        <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="0,10,0,0">
+            <!-- Show Tools panel button -->
+            <Button x:Name="BtnShowTools" Content="&lt;&lt; Tools" Padding="5,2" Click="BtnShowTools_Click" Visibility="Collapsed"/>
+            <!-- Show Extraction panel button -->
+            <Button x:Name="BtnShowExtract" Content="&lt;&lt; Extract" Padding="5,2" Margin="0,5,0,0" Click="BtnOcr_Click" Visibility="Collapsed"/>
+        </StackPanel>
     </Grid>
 </Window>

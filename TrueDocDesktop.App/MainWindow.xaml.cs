@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Drawing.Imaging;
 using PdfiumViewer;
 using System.Windows.Threading;
+using System.Collections.ObjectModel;
 
 namespace TrueDocDesktop.App;
 
@@ -31,6 +32,23 @@ public partial class MainWindow : Window
     private bool _isPdf;
     private readonly AppSettings _settings;
     private DashScopeService? _dashScopeService;
+    private bool _isToolsPanelVisible = true; // Track Tools panel visibility
+    private bool _isExtractPanelVisible = false; // Set to false by default to hide the extraction panel
+    
+    // Dictionary of document type prompts
+    private readonly Dictionary<string, string> PROMPTS = new Dictionary<string, string>
+    {
+        {"Business Card", "I have this image and it contains one or multiple business cards, can you help me to extract the information from this image into the JSON format as: {\"0\": <bizcard_json_1>,\"1\": <bizcard_json_2> ..., \"n\": <bizcard_json_n>}. In child JSON like <bizcard_json_1> will follow this format {\"company_name\": \"\", \"full_name\": \"\", \"title\": \"\", \"email_address\": \"\", \"phone_number\": \"\", \"tel_number\": \"\", \"fax_number\": \"\", \"website\": \"\", \"address\": \"\", \"handwritting_content\": \"\"}"},
+        {"Receipt", "Give me JSON as this format: {\"receipt_number\": \"\", \"document_date\": \"\", \"store_name\": \"\", \"store_address\": \"\", \"phone_number\": \"\", \"fax_number\": \"\", \"email\": \"\", \"website\": \"\", \"gst_id\": \"\", \"pax_number\": \"\", \"table_number\": \"\", \"cashier_name\": \"\", \"item_no_of_receipt_items\": [], \"item_code_of_receipt_items\": [], \"names_of_receipt_items\": [], \"quantities_of_receipt_items\": [], \"unit_prices_of_receipt_items\": [], \"gross_worth_of_receipt_items\": [], \"subtotal\": \"\", \"rounding_amount\": \"\", \"paid_amount\": \"\", \"change_amount\": \"\", \"service_charge_percent\": \"\", \"service_charge\": \"\", currency\": \"\", \"tax_percent\": \"\", \"tax_total\": \"\", \"total\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string, Remove Line Break special character"},
+        {"Purchase Order", "Give me JSON as this format: {\"company_name\": \"\", \"purchase_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
+        {"Invoice", "Give me JSON as this format: {\"company_name\": \"\", \"invoice_number\": \"\", \"purchase_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
+        {"Delivery Order", "Give me JSON as this format: {\"company_name\": \"\", \"invoice_number\": \"\", \"purchase_order_number\": \"\", \"delivery_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
+        {"Bankstatement", "Please extract all information as JSON"},
+        {"General", "Please extract all information as JSON"},
+        {"POSBBankStatement", "Please extract all information as JSON. All data value in string format"},
+        {"OCBCBankStatement", "Please extract all information as JSON. Note: 1) Transactions item follow this format {\"date\": \"\", \"description\": \"\", \"cheque\": \"\", \"withdrawal\": \"\", \"deposit\": \"\", \"balance\": \"\"}. 2) All data value in string format"},
+        {"TextDocument", "Extract the full text content from this document and return it in the following JSON format: {\"full_text\": \"Document content\"}"}
+    };
 
     public MainWindow()
     {
@@ -53,8 +71,43 @@ public partial class MainWindow : Window
             // Initialize drag and drop functionality
             InitializeDragAndDrop();
             
-            // Check for PdfiumViewer dependencies in the background
-            Task.Run(() => CheckPdfiumDependencies());
+            // Initialize panel visibility
+            _isToolsPanelVisible = true;
+            _isExtractPanelVisible = false;
+            
+            // Apply initial panel visibility with a delay to ensure UI is loaded
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+            {
+                try
+                {
+                    // Initialize tools panel (should be visible)
+                    var grid = (Grid)this.Content;
+                    
+                    // Ensure extraction panel is hidden initially
+                    ExtractPanel.Visibility = Visibility.Collapsed;
+                    
+                    // Hide extraction column to start with
+                    if (grid.ColumnDefinitions.Count > 4)
+                    {
+                        grid.ColumnDefinitions[4].Width = new GridLength(0);
+                    }
+                    
+                    // Initialize floating buttons visibility
+                    if (BtnShowTools != null)
+                    {
+                        BtnShowTools.Visibility = Visibility.Collapsed; // Hidden initially as tools panel is visible
+                    }
+                    
+                    if (FindName("BtnShowExtract") is Button showExtractBtn)
+                    {
+                        showExtractBtn.Visibility = Visibility.Visible; // Visible initially as extract panel is hidden
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error initializing panel layout: {ex.Message}");
+                }
+            }));
         }
         catch (Exception ex)
         {
@@ -281,14 +334,7 @@ public partial class MainWindow : Window
         };
         menuItem.Click += SettingsMenuItem_Click;
 
-        var dependenciesMenuItem = new MenuItem
-        {
-            Header = "Install PDF Dependencies"
-        };
-        dependenciesMenuItem.Click += DependenciesMenuItem_Click;
-
         menu.Items.Add(menuItem);
-        menu.Items.Add(dependenciesMenuItem);
 
         // Add to window
         Grid mainGrid = (Grid)Content;
@@ -297,41 +343,50 @@ public partial class MainWindow : Window
 
     private async void InitializeAsync()
     {
-        // Initialize WebView2 control for PDF viewing
         try
         {
-            await PdfViewer.EnsureCoreWebView2Async(null);
-            PdfViewer.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            PdfViewer.CoreWebView2.Settings.AreDevToolsEnabled = false;
+            // Initialize WebView2 environment if needed
+            if (PdfViewer.CoreWebView2 == null)
+            {
+                var webView2Environment = await CoreWebView2Environment.CreateAsync(null, Path.GetTempPath(), null);
+                await PdfViewer.EnsureCoreWebView2Async(webView2Environment);
+            }
             
-            // Disable all operation buttons initially
-            BtnSaveAs.IsEnabled = false;
-            BtnPrint.IsEnabled = false;
-            BtnOcr.IsEnabled = false;
-            BtnCopyText.IsEnabled = false;
+            // Set default visibility
+            PdfViewer.Visibility = Visibility.Collapsed;
+            ImageViewer.Visibility = Visibility.Collapsed;
+            NoDocumentPanel.Visibility = Visibility.Visible;
             
-            // Hide operation groups until a file is loaded
+            // Collapse tool-specific panels
             if (PdfOperationsGroup != null) PdfOperationsGroup.Visibility = Visibility.Collapsed;
             if (ImageOperationsGroup != null) ImageOperationsGroup.Visibility = Visibility.Collapsed;
             if (ActionsGroup != null) ActionsGroup.Visibility = Visibility.Collapsed;
-            if (OcrResultsGroup != null) OcrResultsGroup.Visibility = Visibility.Collapsed;
             if (DocumentInfoGroup != null) DocumentInfoGroup.Visibility = Visibility.Collapsed;
             
-            // Disable PDF operations
-            BtnConvertToImage.IsEnabled = false;
-            BtnSetPassword.IsEnabled = false;
-            BtnRemovePassword.IsEnabled = false;
-            BtnSignPdf.IsEnabled = false;
+            // Set WebView2 settings
+            if (PdfViewer.CoreWebView2 != null)
+            {
+                // Disable default context menu
+                PdfViewer.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                
+                // Handle new window requests to open them in the default browser
+                PdfViewer.CoreWebView2.NewWindowRequested += (s, e) =>
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = e.Uri,
+                        UseShellExecute = true
+                    });
+                    e.Handled = true;
+                };
+            }
             
-            // Disable Image operations
-            BtnConvertToPdf.IsEnabled = false;
-            BtnIncreaseDpi.IsEnabled = false;
-            BtnCropImage.IsEnabled = false;
+            // Check for PDF dependencies
+            CheckPdfiumDependencies();
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to initialize WebView2: {ex.Message}\n\nPlease make sure WebView2 Runtime is installed.", 
-                "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error initializing web view: {ex.Message}", "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -347,11 +402,6 @@ public partial class MainWindow : Window
             // Reinitialize DashScope service with the new API key
             InitializeDashScopeService();
         }
-    }
-
-    private void DependenciesMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        PdfiumDependencyChecker.ShowDependencyInstructions();
     }
 
     private void InitializeDashScopeService()
@@ -372,6 +422,11 @@ public partial class MainWindow : Window
             _dashScopeService = null;
             BtnOcr.IsEnabled = false;
         }
+    }
+
+    private void DependenciesMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        PdfiumDependencyChecker.ShowDependencyInstructions();
     }
 
     private void BtnUploadPdf_Click(object sender, RoutedEventArgs e)
@@ -560,13 +615,14 @@ public partial class MainWindow : Window
             // OCR button is only enabled for images
             BtnOcr.IsEnabled = !_isPdf && _dashScopeService != null;
             
+            // Remove references to OcrResultsGroup which has been deleted
             // Show OCR results section for images if the API is configured
-            if (OcrResultsGroup != null) 
-                OcrResultsGroup.Visibility = !_isPdf && _dashScopeService != null ? Visibility.Visible : Visibility.Collapsed;
+            // if (OcrResultsGroup != null) 
+            //     OcrResultsGroup.Visibility = !_isPdf && _dashScopeService != null ? Visibility.Visible : Visibility.Collapsed;
             
             // Clear previous OCR results
-            TxtOcrResults.Text = string.Empty;
-            BtnCopyText.IsEnabled = false;
+            // TxtOcrResults.Text = string.Empty;
+            // BtnCopyText.IsEnabled = false;
         }
         catch (Exception ex)
         {
@@ -581,7 +637,8 @@ public partial class MainWindow : Window
             if (PdfOperationsGroup != null) PdfOperationsGroup.Visibility = Visibility.Collapsed;
             if (ImageOperationsGroup != null) ImageOperationsGroup.Visibility = Visibility.Collapsed;
             if (ActionsGroup != null) ActionsGroup.Visibility = Visibility.Collapsed;
-            if (OcrResultsGroup != null) OcrResultsGroup.Visibility = Visibility.Collapsed;
+            // Remove reference to OcrResultsGroup which has been deleted
+            // if (OcrResultsGroup != null) OcrResultsGroup.Visibility = Visibility.Collapsed;
             if (DocumentInfoGroup != null) DocumentInfoGroup.Visibility = Visibility.Collapsed;
         }
     }
@@ -695,7 +752,51 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void BtnOcr_Click(object sender, RoutedEventArgs e)
+    private void BtnToggleTools_Click(object sender, RoutedEventArgs e)
+    {
+        // Hide tools panel
+        _isToolsPanelVisible = false;
+        
+        // In the new layout, we're using column definitions instead
+        var grid = (Grid)this.Content;
+        var columnDefinitions = grid.ColumnDefinitions;
+        
+        // Hide the tools column
+        if (columnDefinitions.Count > 2)
+        {
+            columnDefinitions[2].Width = new GridLength(0);
+        }
+        
+        // Show the floating button
+        if (BtnShowTools != null)
+        {
+            BtnShowTools.Visibility = Visibility.Visible;
+        }
+    }
+    
+    private void BtnShowTools_Click(object sender, RoutedEventArgs e)
+    {
+        // Show tools panel
+        _isToolsPanelVisible = true;
+        
+        // In the new layout, we're using column definitions
+        var grid = (Grid)this.Content;
+        var columnDefinitions = grid.ColumnDefinitions;
+        
+        // Show the tools column
+        if (columnDefinitions.Count > 2)
+        {
+            columnDefinitions[2].Width = new GridLength(1, GridUnitType.Star);
+        }
+        
+        // Hide the floating button
+        if (BtnShowTools != null)
+        {
+            BtnShowTools.Visibility = Visibility.Collapsed;
+        }
+    }
+    
+    private void BtnOcr_Click(object sender, RoutedEventArgs e)
     {
         if (_dashScopeService == null)
         {
@@ -703,9 +804,114 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || _isPdf)
+        if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath))
         {
-            MessageBox.Show("Text extraction can only be performed on image files.", "Cannot Process", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please load a document first.", "No Document", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // Toggle extraction panel visibility
+        _isExtractPanelVisible = !_isExtractPanelVisible;
+        
+        try
+        {
+            // Get the main grid
+            var grid = (Grid)this.Content;
+            
+            // Update the layout based on the extraction panel visibility state
+            if (_isExtractPanelVisible)
+            {
+                // Show extraction panel
+                if (grid.ColumnDefinitions.Count > 4)
+                {
+                    grid.ColumnDefinitions[4].Width = new GridLength(1, GridUnitType.Star);
+                }
+                ExtractPanel.Visibility = Visibility.Visible;
+                
+                // Hide the BtnShowExtract button
+                var showExtractBtn = FindName("BtnShowExtract") as Button;
+                if (showExtractBtn != null)
+                {
+                    showExtractBtn.Visibility = Visibility.Collapsed;
+                }
+            }
+            else
+            {
+                // Hide extraction panel
+                if (grid.ColumnDefinitions.Count > 4)
+                {
+                    grid.ColumnDefinitions[4].Width = new GridLength(0);
+                }
+                ExtractPanel.Visibility = Visibility.Collapsed;
+                
+                // Show the BtnShowExtract button
+                var showExtractBtn = FindName("BtnShowExtract") as Button;
+                if (showExtractBtn != null)
+                {
+                    showExtractBtn.Visibility = Visibility.Visible;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error toggling extraction panel: {ex.Message}");
+        }
+    }
+
+    // Update this method to match our new approach
+    private void UpdateExtractPanelVisibility()
+    {
+        try
+        {
+            var grid = (Grid)this.Content;
+            
+            // Show/hide the extraction panel column
+            if (grid.ColumnDefinitions.Count > 4)
+            {
+                if (_isExtractPanelVisible)
+                {
+                    grid.ColumnDefinitions[4].Width = new GridLength(1, GridUnitType.Star);
+                    ExtractPanel.Visibility = Visibility.Visible;
+                    
+                    // Update button visibility
+                    var showExtractBtn = FindName("BtnShowExtract") as Button;
+                    if (showExtractBtn != null)
+                    {
+                        showExtractBtn.Visibility = Visibility.Collapsed;
+                    }
+                }
+                else
+                {
+                    grid.ColumnDefinitions[4].Width = new GridLength(0);
+                    ExtractPanel.Visibility = Visibility.Collapsed;
+                    
+                    // Update button visibility
+                    var showExtractBtn = FindName("BtnShowExtract") as Button;
+                    if (showExtractBtn != null)
+                    {
+                        showExtractBtn.Visibility = Visibility.Visible;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating extraction panel visibility: {ex.Message}");
+        }
+    }
+
+    // Extract Data button in the new panel
+    private async void BtnExtractData_Click(object sender, RoutedEventArgs e)
+    {
+        if (_dashScopeService == null)
+        {
+            MessageBox.Show("Please configure your DashScope API key in Settings first.", "API Key Required", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath))
+        {
+            MessageBox.Show("No document is currently loaded.", "No Document", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -713,38 +919,72 @@ public partial class MainWindow : Window
         {
             // Show progress cursor
             Mouse.OverrideCursor = Cursors.Wait;
-            BtnOcr.IsEnabled = false;
-            TxtOcrResults.Text = "Processing with Qwen-VL-Max...";
+            BtnExtractData.IsEnabled = false;
+            TxtExtractionResults.Text = "Processing...";
             
-            // Make sure the OCR results group is visible
-            if (OcrResultsGroup != null) OcrResultsGroup.Visibility = Visibility.Visible;
-
-            // Perform OCR with Qwen-VL-Max
-            string ocrResult = await _dashScopeService.PerformOcrAsync(_currentFilePath);
+            // Get the selected document type
+            ComboBoxItem selectedItem = (ComboBoxItem)CmbDocumentType.SelectedItem;
+            string documentType = selectedItem.Content.ToString();
             
-            // Display results
-            TxtOcrResults.Text = ocrResult;
-            BtnCopyText.IsEnabled = !string.IsNullOrWhiteSpace(ocrResult);
+            // Get the appropriate prompt for the document type
+            string prompt = PROMPTS[documentType];
+            
+            // Perform extraction with Qwen-VL-Max using the specific prompt
+            string extractionResult = await _dashScopeService.PerformOcrAsync(_currentFilePath, prompt);
+            
+            // Display the results
+            TxtExtractionResults.Text = extractionResult;
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error extracting text: {ex.Message}", "Text Extraction Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            TxtOcrResults.Text = string.Empty;
+            MessageBox.Show($"Error extracting data: {ex.Message}", "Extraction Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            TxtExtractionResults.Text = "Error occurred during extraction.";
         }
         finally
         {
             // Restore cursor
             Mouse.OverrideCursor = null;
-            BtnOcr.IsEnabled = true;
+            BtnExtractData.IsEnabled = true;
         }
     }
 
-    private void BtnCopyText_Click(object sender, RoutedEventArgs e)
+    // Copy Results button
+    private void BtnCopyResults_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrEmpty(TxtOcrResults.Text))
+        if (!string.IsNullOrEmpty(TxtExtractionResults.Text))
         {
-            Clipboard.SetText(TxtOcrResults.Text);
-            MessageBox.Show("Text copied to clipboard!", "Copy Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            Clipboard.SetText(TxtExtractionResults.Text);
+            MessageBox.Show("Results copied to clipboard!", "Copy Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    // Save Results button
+    private void BtnSaveResults_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(TxtExtractionResults.Text))
+        {
+            MessageBox.Show("No results to save.", "Empty Results", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        SaveFileDialog saveFileDialog = new SaveFileDialog
+        {
+            Filter = "JSON Files (*.json)|*.json",
+            Title = "Save Extraction Results",
+            FileName = Path.GetFileNameWithoutExtension(_currentFilePath) + "_extraction.json"
+        };
+
+        if (saveFileDialog.ShowDialog() == true)
+        {
+            try
+            {
+                File.WriteAllText(saveFileDialog.FileName, TxtExtractionResults.Text);
+                MessageBox.Show("Results saved successfully!", "Save Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error saving results: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 
@@ -768,21 +1008,6 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || !_isPdf)
         {
             MessageBox.Show("No PDF document is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-        
-        // Check if PdfiumViewer dependencies are available
-        if (!PdfiumDependencyChecker.AreDependenciesAvailable())
-        {
-            MessageBox.Show(
-                "PDF to image conversion requires PdfiumViewer native dependencies, which are missing.\n\n" +
-                "Please click on the 'Install PDF Dependencies' menu option in the top-right corner to install them automatically.",
-                "Missing Dependencies",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-                
-            // Show dependency instructions and exit
-            PdfiumDependencyChecker.ShowDependencyInstructions();
             return;
         }
         
@@ -1794,7 +2019,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || !_isPdf)
+            if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || _isPdf)
             {
                 MessageBox.Show("No image is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;

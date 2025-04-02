@@ -94,6 +94,11 @@ namespace TrueDocDesktop.App.Services
             return await PerformOcrAsync(imagePath, ModelName, SystemContent, UserContent);
         }
 
+        public async Task<string> PerformOcrAsync(string imagePath, string customPrompt)
+        {
+            return await PerformOcrAsync(imagePath, ModelName, SystemContent, customPrompt);
+        }
+
         public async Task<string> PerformOcrAsync(string imagePath, string modelName, string systemContent, string userContent)
         {
             try
