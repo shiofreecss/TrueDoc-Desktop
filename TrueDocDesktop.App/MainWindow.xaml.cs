@@ -20,6 +20,10 @@ using System.Drawing.Imaging;
 using PdfiumViewer;
 using System.Windows.Threading;
 using System.Collections.ObjectModel;
+using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.Text.RegularExpressions;
 
 namespace TrueDocDesktop.App;
 
@@ -34,12 +38,20 @@ public partial class MainWindow : Window
     private DashScopeService? _dashScopeService;
     private bool _isToolsPanelVisible = true; // Track Tools panel visibility
     private bool _isExtractPanelVisible = false; // Set to false by default to hide the extraction panel
+    private bool _isDataValidationPanelVisible = false; // Set to false by default to hide the data validation panel
+    
+    // PDF page navigation variables
+    private int _currentPdfPage = 1;
+    private int _totalPdfPages = 1;
+    private string _processingFolder = string.Empty;
+    private string _pdfBaseName = string.Empty;
+    private Dictionary<int, string> _pdfPageResults = new Dictionary<int, string>();
     
     // Dictionary of document type prompts
     private readonly Dictionary<string, string> PROMPTS = new Dictionary<string, string>
     {
         {"Business Card", "I have this image and it contains one or multiple business cards, can you help me to extract the information from this image into the JSON format as: {\"0\": <bizcard_json_1>,\"1\": <bizcard_json_2> ..., \"n\": <bizcard_json_n>}. In child JSON like <bizcard_json_1> will follow this format {\"company_name\": \"\", \"full_name\": \"\", \"title\": \"\", \"email_address\": \"\", \"phone_number\": \"\", \"tel_number\": \"\", \"fax_number\": \"\", \"website\": \"\", \"address\": \"\", \"handwritting_content\": \"\"}"},
-        {"Receipt", "Give me JSON as this format: {\"receipt_number\": \"\", \"document_date\": \"\", \"store_name\": \"\", \"store_address\": \"\", \"phone_number\": \"\", \"fax_number\": \"\", \"email\": \"\", \"website\": \"\", \"gst_id\": \"\", \"pax_number\": \"\", \"table_number\": \"\", \"cashier_name\": \"\", \"item_no_of_receipt_items\": [], \"item_code_of_receipt_items\": [], \"names_of_receipt_items\": [], \"quantities_of_receipt_items\": [], \"unit_prices_of_receipt_items\": [], \"gross_worth_of_receipt_items\": [], \"subtotal\": \"\", \"rounding_amount\": \"\", \"paid_amount\": \"\", \"change_amount\": \"\", \"service_charge_percent\": \"\", \"service_charge\": \"\", currency\": \"\", \"tax_percent\": \"\", \"tax_total\": \"\", \"total\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string, Remove Line Break special character"},
+        {"Receipt", "Give me JSON as this format: {\"receipt_number\": \"\", \"document_date\": \"\", \"store_name\": \"\", \"store_address\": \"\", \"phone_number\": \"\", \"fax_number\": \"\", \"email\": \"\", \"website\": \"\", \"gst_id\": \"\", \"pax_number\": \"\", \"table_number\": \"\", \"cashier_name\": \"\", \"item_no_of_receipt_items\": [], \"item_code_of_receipt_items\": [], \"names_of_receipt_items\": [], \"quantities_of_receipt_items\": [], \"unit_prices_of_receipt_items\": [], \"gross_worth_of_receipt_items\": [], \"subtotal\": \"\", \"rounding_amount\": \"\", \"paid_amount\": \"\", \"change_amount\": \"\", \"service_charge_percent\": \"\", \"service_charge\": \"\", \"currency\": \"\", \"tax_percent\": \"\", \"tax_total\": \"\", \"total\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string, Remove Line Break special character"},
         {"Purchase Order", "Give me JSON as this format: {\"company_name\": \"\", \"purchase_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
         {"Invoice", "Give me JSON as this format: {\"company_name\": \"\", \"invoice_number\": \"\", \"purchase_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
         {"Delivery Order", "Give me JSON as this format: {\"company_name\": \"\", \"invoice_number\": \"\", \"purchase_order_number\": \"\", \"delivery_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
@@ -383,6 +395,29 @@ public partial class MainWindow : Window
             
             // Check for PDF dependencies
             CheckPdfiumDependencies();
+            
+            // Make sure Data Validation panel is hidden by default
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+            {
+                _isDataValidationPanelVisible = false;
+                var grid = (Grid)this.Content;
+                
+                if (grid.ColumnDefinitions.Count > 6)
+                {
+                    grid.ColumnDefinitions[6].Width = new GridLength(0);
+                }
+                
+                if (DataValidationPanel != null)
+                {
+                    DataValidationPanel.Visibility = Visibility.Collapsed;
+                }
+                
+                // Make sure BtnShowValidation is visible
+                if (BtnShowValidation != null)
+                {
+                    BtnShowValidation.Visibility = Visibility.Visible;
+                }
+            }));
         }
         catch (Exception ex)
         {
@@ -415,12 +450,24 @@ public partial class MainWindow : Window
             _dashScopeService.SystemContent = _settings.SystemPrompt;
             _dashScopeService.UserContent = _settings.UserPrompt;
             
-            BtnOcr.IsEnabled = !_isPdf && _currentFilePath != null;
+            // Enable buttons based on document type
+            if (_currentFilePath != null)
+            {
+                if (_isPdf)
+                {
+                    BtnPdfExtract.IsEnabled = true;
+                }
+                else
+                {
+                    BtnImageExtract.IsEnabled = true;
+                }
+            }
         }
         else
         {
             _dashScopeService = null;
-            BtnOcr.IsEnabled = false;
+            if (BtnPdfExtract != null) BtnPdfExtract.IsEnabled = false;
+            if (BtnImageExtract != null) BtnImageExtract.IsEnabled = false;
         }
     }
 
@@ -457,7 +504,47 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LoadDocument(string filePath)
+    private async Task<bool> EnsureWebView2Initialized()
+    {
+        try
+        {
+            if (PdfViewer.CoreWebView2 == null)
+            {
+                // Create and initialize the WebView2 environment
+                var webView2Environment = await CoreWebView2Environment.CreateAsync(null, Path.GetTempPath(), null);
+                await PdfViewer.EnsureCoreWebView2Async(webView2Environment);
+                
+                // Configure WebView2 settings
+                if (PdfViewer.CoreWebView2 != null)
+                {
+                    // Disable context menu
+                    PdfViewer.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                    
+                    // Handle new window requests
+                    PdfViewer.CoreWebView2.NewWindowRequested += (s, e) =>
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = e.Uri,
+                            UseShellExecute = true
+                        });
+                        e.Handled = true;
+                    };
+                    
+                    return true;
+                }
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error initializing WebView2: {ex.Message}", "WebView2 Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+    }
+
+    private async void LoadDocument(string filePath)
     {
         try
         {
@@ -472,6 +559,16 @@ public partial class MainWindow : Window
 
             if (_isPdf)
             {
+                // Ensure WebView2 is initialized before loading a PDF
+                bool webViewInitialized = await EnsureWebView2Initialized();
+                if (!webViewInitialized)
+                {
+                    MessageBox.Show("Failed to initialize PDF viewer. Please try again or restart the application.", 
+                                   "PDF Viewer Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    NoDocumentPanel.Visibility = Visibility.Visible;
+                    return;
+                }
+                
                 // Load PDF file
                 LoadPdf(filePath);
                 PdfViewer.Visibility = Visibility.Visible;
@@ -480,16 +577,19 @@ public partial class MainWindow : Window
                 if (PdfOperationsGroup != null) PdfOperationsGroup.Visibility = Visibility.Visible;
                 if (ImageOperationsGroup != null) ImageOperationsGroup.Visibility = Visibility.Collapsed;
                 
+                // Show Actions group for PDFs
+                if (ActionsGroup != null) ActionsGroup.Visibility = Visibility.Visible;
+                
                 // Enable PDF operation buttons
+                BtnPdfExtract.IsEnabled = _dashScopeService != null;
                 BtnConvertToImage.IsEnabled = true;
                 BtnSetPassword.IsEnabled = true;
                 BtnRemovePassword.IsEnabled = true;
                 BtnSignPdf.IsEnabled = true;
                 
-                // Disable image operation buttons
-                BtnConvertToPdf.IsEnabled = false;
-                BtnIncreaseDpi.IsEnabled = false;
-                BtnCropImage.IsEnabled = false;
+                // Enable action buttons
+                BtnSaveAs.IsEnabled = true;
+                BtnPrint.IsEnabled = true;
             }
             else
             {
@@ -501,13 +601,11 @@ public partial class MainWindow : Window
                 if (PdfOperationsGroup != null) PdfOperationsGroup.Visibility = Visibility.Collapsed;
                 if (ImageOperationsGroup != null) ImageOperationsGroup.Visibility = Visibility.Visible;
                 
-                // Disable PDF operation buttons
-                BtnConvertToImage.IsEnabled = false;
-                BtnSetPassword.IsEnabled = false;
-                BtnRemovePassword.IsEnabled = false;
-                BtnSignPdf.IsEnabled = false;
+                // Hide Actions group for images
+                if (ActionsGroup != null) ActionsGroup.Visibility = Visibility.Collapsed;
                 
                 // Enable image operation buttons
+                BtnImageExtract.IsEnabled = _dashScopeService != null;
                 BtnConvertToPdf.IsEnabled = true;
                 BtnIncreaseDpi.IsEnabled = true;
                 BtnCropImage.IsEnabled = true;
@@ -604,16 +702,9 @@ public partial class MainWindow : Window
                     if (TxtColorDepth != null) TxtColorDepth.Text = "N/A";
                 }
             }
-
-            // Show common action buttons
-            if (ActionsGroup != null) ActionsGroup.Visibility = Visibility.Visible;
             
-            // Enable action buttons
-            BtnSaveAs.IsEnabled = true;
-            BtnPrint.IsEnabled = true;
-            
-            // OCR button is only enabled for images
-            BtnOcr.IsEnabled = !_isPdf && _dashScopeService != null;
+            // OCR button is enabled for both images and PDFs if the API is configured
+            // BtnOcr.IsEnabled = _dashScopeService != null;
             
             // Remove references to OcrResultsGroup which has been deleted
             // Show OCR results section for images if the API is configured
@@ -645,30 +736,52 @@ public partial class MainWindow : Window
 
     private void LoadPdf(string filePath)
     {
-        // Use WebView2 to display PDF
-        string tempHtml = Path.Combine(Path.GetTempPath(), "pdfviewer.html");
-        string fileUrl = new Uri(filePath).AbsoluteUri;
-        
-        string html = $@"
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>PDF Viewer</title>
-                <style>
-                    body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; }}
-                    #pdf-container {{ width: 100%; height: 100%; }}
-                    embed {{ width: 100%; height: 100%; }}
-                </style>
-            </head>
-            <body>
-                <div id='pdf-container'>
-                    <embed src='{fileUrl}' type='application/pdf' width='100%' height='100%' />
-                </div>
-            </body>
-            </html>";
+        try
+        {
+            // Use WebView2 to display PDF
+            string tempHtml = Path.Combine(Path.GetTempPath(), $"pdfviewer_{Guid.NewGuid()}.html");
+            string absolutePath = Path.GetFullPath(filePath);
+            string fileUrl = new Uri(absolutePath).AbsoluteUri;
+            
+            string html = $@"
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>PDF Viewer</title>
+                    <style>
+                        body, html {{ margin: 0; padding: 0; height: 100%; overflow: hidden; }}
+                        #pdf-container {{ width: 100%; height: 100%; }}
+                        embed {{ width: 100%; height: 100%; }}
+                    </style>
+                </head>
+                <body>
+                    <div id='pdf-container'>
+                        <embed src='{fileUrl}' type='application/pdf' width='100%' height='100%' />
+                    </div>
+                </body>
+                </html>";
 
-        File.WriteAllText(tempHtml, html);
-        PdfViewer.Source = new Uri(tempHtml);
+            File.WriteAllText(tempHtml, html);
+            
+            // Handle WebView2 loading
+            if (PdfViewer.CoreWebView2 != null)
+            {
+                PdfViewer.CoreWebView2.Navigate(new Uri(tempHtml).AbsoluteUri);
+            }
+            else
+            {
+                PdfViewer.Source = new Uri(tempHtml);
+            }
+            
+            // Ensure WebView2 is visible
+            PdfViewer.Visibility = Visibility.Visible;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error loading PDF: {ex.Message}", "PDF Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            NoDocumentPanel.Visibility = Visibility.Visible;
+            PdfViewer.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void LoadImage(string filePath)
@@ -879,6 +992,19 @@ public partial class MainWindow : Window
                     {
                         showExtractBtn.Visibility = Visibility.Collapsed;
                     }
+                    
+                    // When showing extract panel, hide tools panel
+                    _isToolsPanelVisible = false;
+                    if (grid.ColumnDefinitions.Count > 2)
+                    {
+                        grid.ColumnDefinitions[2].Width = new GridLength(0);
+                    }
+                    
+                    // Show the floating button for tools
+                    if (BtnShowTools != null)
+                    {
+                        BtnShowTools.Visibility = Visibility.Visible;
+                    }
                 }
                 else
                 {
@@ -917,6 +1043,133 @@ public partial class MainWindow : Window
 
         try
         {
+            // Check if JSON file already exists in the processing folder
+            string processingFolder = GetProcessingFolder(_currentFilePath);
+            string originalFileName = Path.GetFileNameWithoutExtension(_currentFilePath);
+            
+            // Different handling for PDF vs single image
+            if (_isPdf)
+            {
+                // For PDFs, check for page-specific JSON files
+                bool hasExistingData = false;
+                
+                // Get PDF page count
+                int pageCount = 1;
+                try 
+                {
+                    using (PdfReader reader = new PdfReader(_currentFilePath))
+                    {
+                        pageCount = reader.NumberOfPages;
+                        }
+                    }
+                    catch
+                    {
+                    // If we can't read the PDF, assume single page
+                    pageCount = 1;
+                }
+                
+                // Check if page 1 data exists
+                string page1JsonPath = Path.Combine(processingFolder, $"{originalFileName}_page1_data.json");
+                hasExistingData = File.Exists(page1JsonPath);
+                
+                if (hasExistingData)
+                {
+                    // Ask user if they want to load existing JSON
+                    var result = MessageBox.Show(
+                        $"Found existing PDF extraction data. Would you like to load it?\n\nPath: {page1JsonPath}\n\nClick 'Yes' to load existing data or 'No' to perform a new extraction.",
+                        "Existing PDF Data Found",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+                    
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        // Initialize navigation variables
+                        _processingFolder = processingFolder;
+                        _pdfBaseName = originalFileName;
+                        _totalPdfPages = pageCount;
+                        _currentPdfPage = 1;
+                        _pdfPageResults.Clear();
+                        
+                        // Load the first page data
+                        string jsonContent = File.ReadAllText(page1JsonPath);
+                        _pdfPageResults[1] = jsonContent;
+                        
+                        // Show extract panel and update UI
+                        _isExtractPanelVisible = true;
+                        UpdateExtractPanelVisibility();
+                        
+                        // Hide data validation panel
+                        _isDataValidationPanelVisible = false;
+                        UpdateDataValidationPanelVisibility();
+                        
+                        // Show PDF navigation for multi-page PDFs
+                        if (pageCount > 1)
+                        {
+                            PdfNavigationPanel.Visibility = Visibility.Visible;
+                        }
+                        else
+                        {
+                            PdfNavigationPanel.Visibility = Visibility.Collapsed;
+                        }
+                        
+                        // Display the loaded JSON
+                        TxtExtractionResults.Text = jsonContent;
+                        UpdatePageNavigationInfo();
+                        
+                        MessageBox.Show("Existing PDF extraction data has been loaded.", "Load Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
+                    }
+                    // If No, proceed with new extraction
+                }
+            }
+            else
+            {
+                // Regular single file check for non-PDF files
+                string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_data.json");
+                
+                if (File.Exists(jsonFilePath))
+                {
+                    // Ask user if they want to load existing JSON instead of re-extracting
+                    var result = MessageBox.Show(
+                        $"Found existing extraction data for this document. Would you like to load it?\n\nPath: {jsonFilePath}\n\nClick 'Yes' to load existing data or 'No' to perform a new extraction.",
+                        "Existing Data Found",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+                    
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        // Load the existing JSON file
+                        string jsonContent = File.ReadAllText(jsonFilePath);
+                        
+                        // Show extract panel and update UI
+                        _isExtractPanelVisible = true;
+                        UpdateExtractPanelVisibility();
+                        
+                        // Hide data validation panel
+                        _isDataValidationPanelVisible = false;
+                        UpdateDataValidationPanelVisibility();
+                        
+                        // Make sure PDF navigation is hidden for single images
+                        PdfNavigationPanel.Visibility = Visibility.Collapsed;
+                        
+                        // Display the loaded JSON
+                        TxtExtractionResults.Text = jsonContent;
+                        
+                        MessageBox.Show("Existing extraction data has been loaded.", "Load Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
+                    }
+                    // If No, proceed with new extraction
+                }
+            }
+
+            // Show extract panel and hide tools panel
+            _isExtractPanelVisible = true;
+            UpdateExtractPanelVisibility();
+            
+            // Make sure data validation panel is hidden
+            _isDataValidationPanelVisible = false;
+            UpdateDataValidationPanelVisibility();
+            
             // Show progress cursor
             Mouse.OverrideCursor = Cursors.Wait;
             BtnExtractData.IsEnabled = false;
@@ -929,11 +1182,105 @@ public partial class MainWindow : Window
             // Get the appropriate prompt for the document type
             string prompt = PROMPTS[documentType];
             
-            // Perform extraction with Qwen-VL-Max using the specific prompt
-            string extractionResult = await _dashScopeService.PerformOcrAsync(_currentFilePath, prompt);
-            
-            // Display the results
-            TxtExtractionResults.Text = extractionResult;
+            if (_isPdf)
+            {
+                // For PDF files, extract each page as image and process
+                await ProcessPdfForAIExtraction(_currentFilePath, prompt);
+                
+                // Show a message about where files have been saved
+                if (_totalPdfPages > 1)
+                {
+                    MessageBox.Show($"PDF extraction complete! Individual page data has been saved to:\n{processingFolder}", 
+                        "PDF Extraction Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            else
+            {
+                // Perform extraction with Qwen-VL-Max using the specific prompt for a single image
+                string extractionResult = await _dashScopeService.PerformOcrAsync(_currentFilePath, prompt);
+                
+                // Pre-process the result to extract only the JSON if in markdown
+                extractionResult = PreProcessExtractionResult(extractionResult);
+                
+                // Display the results
+                TxtExtractionResults.Text = extractionResult;
+                
+                // Hide PDF navigation for single images
+                PdfNavigationPanel.Visibility = Visibility.Collapsed;
+                
+                // Automatically fix and save the JSON
+                try
+                {
+                    // Clean the JSON content
+                    string jsonContent = CleanJsonContent(TxtExtractionResults.Text);
+                    
+                    // Try to format and fix the JSON
+                    try
+                    {
+                        var jsonObject = JsonConvert.DeserializeObject(jsonContent);
+                        if (jsonObject != null)
+                        {
+                            // Reformat with proper indentation
+                            string formattedJson = JsonConvert.SerializeObject(jsonObject, Formatting.Indented);
+                            
+                            // Update the text box with the formatted JSON
+                            TxtExtractionResults.Text = formattedJson;
+                            
+                            // Save to file in the processing folder
+                            if (processingFolder != null)
+                            {
+                                string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_data.json");
+                                
+                                // Save the formatted JSON to file
+                                File.WriteAllText(jsonFilePath, formattedJson);
+                                
+                                // Inform the user that the JSON has been saved
+                                MessageBox.Show($"Extraction results have been formatted and saved to:\n{jsonFilePath}", 
+                                    "JSON Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+                            }
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // If standard parsing fails, try more advanced repair
+                        string repairedJson = AttemptAdvancedJsonRepair(jsonContent);
+                        
+                        try
+                        {
+                            var testObject = JsonConvert.DeserializeObject(repairedJson);
+                            if (testObject != null)
+                            {
+                                // Successfully repaired
+                                string formattedJson = JsonConvert.SerializeObject(testObject, Formatting.Indented);
+                                TxtExtractionResults.Text = formattedJson;
+                                
+                                // Save to file in the processing folder
+                                if (processingFolder != null)
+                                {
+                                    string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_data.json");
+                                    
+                                    // Save the formatted JSON to file
+                                    File.WriteAllText(jsonFilePath, formattedJson);
+                                    
+                                    // Inform the user that the JSON has been saved
+                                    MessageBox.Show($"Extraction results have been repaired, formatted and saved to:\n{jsonFilePath}", 
+                                        "JSON Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Advanced repair also failed
+                            MessageBox.Show("The extracted data couldn't be automatically converted to valid JSON format.",
+                                "JSON Fix Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+                    }
+                }
+                catch (Exception jsonEx)
+                {
+                    MessageBox.Show($"Error processing JSON: {jsonEx.Message}", "JSON Processing Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -948,73 +1295,240 @@ public partial class MainWindow : Window
         }
     }
 
-    // Copy Results button
-    private void BtnCopyResults_Click(object sender, RoutedEventArgs e)
+    // Show validation panel button click
+    private void BtnShowValidation_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrEmpty(TxtExtractionResults.Text))
-        {
-            Clipboard.SetText(TxtExtractionResults.Text);
-            MessageBox.Show("Results copied to clipboard!", "Copy Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
+        _isDataValidationPanelVisible = true;
+        UpdateDataValidationPanelVisibility();
     }
-
-    // Save Results button
-    private void BtnSaveResults_Click(object sender, RoutedEventArgs e)
+    
+    // Update validation panel visibility
+    private void UpdateDataValidationPanelVisibility()
     {
-        if (string.IsNullOrEmpty(TxtExtractionResults.Text))
+        try
         {
-            MessageBox.Show("No results to save.", "Empty Results", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        SaveFileDialog saveFileDialog = new SaveFileDialog
-        {
-            Filter = "JSON Files (*.json)|*.json",
-            Title = "Save Extraction Results",
-            FileName = Path.GetFileNameWithoutExtension(_currentFilePath) + "_extraction.json"
-        };
-
-        if (saveFileDialog.ShowDialog() == true)
-        {
-            try
+            var grid = (Grid)this.Content;
+            
+            // Show/hide the data validation panel column
+            if (grid.ColumnDefinitions.Count > 6)
             {
-                File.WriteAllText(saveFileDialog.FileName, TxtExtractionResults.Text);
-                MessageBox.Show("Results saved successfully!", "Save Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                if (_isDataValidationPanelVisible)
+                {
+                    grid.ColumnDefinitions[6].Width = new GridLength(1, GridUnitType.Star);
+                    DataValidationPanel.Visibility = Visibility.Visible;
+                    
+                    // Update button visibility
+                    if (BtnShowValidation != null)
+                    {
+                        BtnShowValidation.Visibility = Visibility.Collapsed;
+                    }
             }
-            catch (Exception ex)
+            else
             {
-                MessageBox.Show($"Error saving results: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    grid.ColumnDefinitions[6].Width = new GridLength(0);
+                    DataValidationPanel.Visibility = Visibility.Collapsed;
+                    
+                    // Update button visibility
+                    if (BtnShowValidation != null)
+                    {
+                        BtnShowValidation.Visibility = Visibility.Visible;
+                    }
+                }
             }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating validation panel visibility: {ex.Message}");
+        }
+    }
+    
+    // Test method to demonstrate validation with sample data
+    private void LoadSampleJsonForValidation(string documentType)
+    {
+        string jsonContent = "";
+        
+        switch (documentType)
+        {
+            case "Invoice":
+                jsonContent = @"{
+  ""company_name"": ""Cass Europe b.v."",
+  ""invoice_number"": ""CEINV-000000501"",
+  ""purchase_order_number"": ""PO400915054999"",
+  ""document_date"": ""12/12/2019"",
+  ""client_name"": ""ABC ASIA PTE LTD"",
+  ""client_address"": ""1 KALLANG AVENUE\nLEVEL 1\n123456 SINGAPORE SG"",
+  ""sale_order_number"": """",
+  ""client_tax_id"": ""M90361999A"",
+  ""seller_name"": """",
+  ""seller_address"": ""Graaf Engelbertlaan 75"",
+  ""seller_tax_id"": """",
+  ""iban"": """",
+  ""item_no_of_invoice_items"": [""22"", ""2.075"", ""2.178"", ""1""],
+  ""names_of_invoice_items"": [""PARCEL PACKAGE FEES"", ""Freight Billing File With Resolution"", ""IMACHING - EDI"", ""MONTHLY FEE""],
+  ""quantities_of_invoice_items"": [""22"", ""2.075"", ""2.178"", ""1""],
+  ""unit_prices_of_invoice_items"": [""€0,06"", ""€0,55"", ""€0,10"", ""€285,00""],
+  ""gross_worth_of_invoice_items"": [""€1,32"", ""€1.141,25"", ""€217,80"", ""€285,00""],
+  ""total_net_worth"": ""€1.645,37"",
+  ""tax_amount"": ""€0,00"",
+  ""tax_percent"": """",
+  ""total_gross_worth"": ""€1.645,37"",
+  ""handwritting_content"": """"
+}";
+                break;
+                
+            case "Receipt":
+                jsonContent = @"{
+  ""receipt_number"": ""R328794"",
+  ""document_date"": ""15/04/2023"",
+  ""store_name"": ""FAIRPRICE FINEST"",
+  ""store_address"": ""290 Orchard Rd, #B1-03/04, Singapore 238859"",
+  ""phone_number"": ""+65 6737 1516"",
+  ""fax_number"": """",
+  ""email"": """",
+  ""website"": ""www.fairprice.com.sg"",
+  ""gst_id"": ""M4-0000042-2"",
+  ""pax_number"": ""2"",
+  ""table_number"": """",
+  ""cashier_name"": ""Sophia"",
+  ""item_no_of_receipt_items"": [""1"", ""2"", ""3"", ""4"", ""5""],
+  ""item_code_of_receipt_items"": [""APL001"", ""ORG002"", ""BRD003"", ""MLK004"", ""WTR005""],
+  ""names_of_receipt_items"": [""Apple Fuji"", ""Organic Spinach"", ""Whole Grain Bread"", ""Low Fat Milk 1L"", ""Mineral Water 500ml""],
+  ""quantities_of_receipt_items"": [""4"", ""1"", ""2"", ""1"", ""6""],
+  ""unit_prices_of_receipt_items"": [""$0.80"", ""$3.50"", ""$3.95"", ""$2.95"", ""$0.80""],
+  ""gross_worth_of_receipt_items"": [""$3.20"", ""$3.50"", ""$7.90"", ""$2.95"", ""$4.80""],
+  ""subtotal"": ""$22.35"",
+  ""rounding_amount"": ""$0.00"",
+  ""paid_amount"": ""$25.00"",
+  ""change_amount"": ""$2.65"",
+  ""service_charge_percent"": """",
+  ""service_charge"": """",
+  ""currency"": ""SGD"",
+  ""tax_percent"": ""7%"",
+  ""tax_total"": ""$1.46"",
+  ""total"": ""$23.81"",
+  ""handwritting_content"": """"
+}";
+                break;
+                
+            case "Purchase Order":
+                jsonContent = @"{
+  ""company_name"": ""JVD TECHNOLOGIES (ASIA) PTE LTD"",
+  ""purchase_order_number"": ""ASPO25000807"",
+  ""document_date"": ""03/03/2025"",
+  ""client_name"": ""MOMENTUS HOTEL ALEXANDRA"",
+  ""client_address"": ""323 Alexandra Road, Singapore 159972"",
+  ""sale_order_number"": ""LSO25-022301"",
+  ""client_tax_id"": """",
+  ""seller_name"": ""JVD TECHNOLOGIES (ASIA) PTE LTD"",
+  ""seller_address"": ""No. 56 Loyang Way #06-04 Loyang Enterprise, Singapore 508775"",
+  ""seller_tax_id"": ""199906280E"",
+  ""iban"": """",
+  ""item_no_of_invoice_items"": [""LTW-300549-UB-V2""],
+  ""names_of_invoice_items"": [""Linen trolley, H820/L1000/W700mm, steel 25mm tube, 2 solid & 2 swivel wheels, Black bag, Black""],
+  ""quantities_of_invoice_items"": [""5""],
+  ""unit_prices_of_invoice_items"": [""""],
+  ""gross_worth_of_invoice_items"": [""""],
+  ""total_net_worth"": """",
+  ""tax_amount"": """",
+  ""tax_percent"": """",
+  ""total_gross_worth"": """",
+  ""handwritting_content"": """"
+}";
+                break;
+                
+            case "Delivery Order":
+                jsonContent = @"{
+  ""company_name"": ""JVD TECHNOLOGIES (ASIA) PTE LTD"",
+  ""invoice_number"": ""INV25-0330005"",
+  ""purchase_order_number"": ""ASPO25000807"",
+  ""delivery_order_number"": ""DO25-0018234"",
+  ""document_date"": ""03/03/2025"",
+  ""client_name"": ""MOMENTUS HOTEL ALEXANDRA"",
+  ""client_address"": ""323 Alexandra Road, Singapore 159972"",
+  ""sale_order_number"": ""LSO25-022301"",
+  ""client_tax_id"": """",
+  ""seller_name"": ""JVD TECHNOLOGIES (ASIA) PTE LTD"",
+  ""seller_address"": ""No. 56 Loyang Way #06-04 Loyang Enterprise, Singapore 508775"",
+  ""seller_tax_id"": ""199906280E"",
+  ""iban"": """",
+  ""item_no_of_invoice_items"": [""LTW-300549-UB-V2""],
+  ""names_of_invoice_items"": [""Linen trolley, H820/L1000/W700mm, steel 25mm tube, 2 solid & 2 swivel wheels, Black bag, Black""],
+  ""quantities_of_invoice_items"": [""5""],
+  ""unit_prices_of_invoice_items"": [""""],
+  ""gross_worth_of_invoice_items"": [""""],
+  ""total_net_worth"": """",
+  ""tax_amount"": """",
+  ""tax_percent"": """",
+  ""total_gross_worth"": """",
+  ""handwritting_content"": """"
+}";
+                        break;
+                
+            case "Business Card":
+                jsonContent = @"{
+  ""0"": {
+    ""company_name"": ""ABC CONSULTING PTE LTD"",
+    ""full_name"": ""John Smith"",
+    ""title"": ""Senior Consultant"",
+    ""email_address"": ""john.smith@abcconsulting.com"",
+    ""phone_number"": ""+65 9123 4567"",
+    ""tel_number"": ""+65 6789 1234"",
+    ""fax_number"": ""+65 6789 1235"",
+    ""website"": ""www.abcconsulting.com"",
+    ""address"": ""1 Raffles Place, #20-01, Singapore 048616"",
+    ""handwritting_content"": """"
+  }
+}";
+                break;
+            
+            default:
+                MessageBox.Show($"No sample data available for {documentType} type.", "Sample Data", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+        }
+        
+        try
+        {
+            // Set the sample JSON to the extraction results textbox
+            TxtExtractionResults.Text = jsonContent;
+            
+            // Parse the JSON
+            var jsonObject = JsonConvert.DeserializeObject<JObject>(jsonContent);
+            
+            // Show validation panel directly with selected document type
+            if (jsonObject != null)
+            {
+                ShowDataValidationPanel(jsonObject, documentType);
+                
+                // Update UI state
+                _isDataValidationPanelVisible = true;
+                UpdateDataValidationPanelVisibility();
+                
+                // Update the document type dropdown
+                foreach (ComboBoxItem item in CmbDocumentType.Items)
+                {
+                    if (item.Content.ToString() == documentType)
+                    {
+                        CmbDocumentType.SelectedItem = item;
+                        break;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error loading sample data: {ex.Message}", "Sample Data Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
-    private string FormatFileSize(long bytes)
+    // Test validation button click
+    private void BtnTestValidation_Click(object sender, RoutedEventArgs e)
     {
-        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
-        double len = bytes;
-        int order = 0;
-        
-        while (len >= 1024 && order < sizes.Length - 1)
+        try
         {
-            order++;
-            len = len / 1024;
-        }
-
-        return $"{len:0.##} {sizes[order]}";
-    }
-
-    private void BtnConvertToImage_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || !_isPdf)
-        {
-            MessageBox.Show("No PDF document is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-        
-        // Create a popup to select the image format
-        var formatWindow = new Window
-        {
-            Title = "Select Image Format",
+            // Create a window to select the document type
+            var selectWindow = new Window
+            {
+                Title = "Select Document Type",
             Width = 300,
             Height = 250,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -1022,1372 +1536,417 @@ public partial class MainWindow : Window
             ResizeMode = ResizeMode.NoResize
         };
         
-        var stackPanel = new StackPanel { Margin = new Thickness(20) };
-        var formatLabel = new TextBlock { Text = "Choose the image format:", Margin = new Thickness(0, 0, 0, 10) };
-        
-        var formatComboBox = new ComboBox 
-        { 
-            Margin = new Thickness(0, 0, 0, 20),
-            SelectedIndex = 0
-        };
-        formatComboBox.Items.Add("JPEG (.jpg)");
-        formatComboBox.Items.Add("PNG (.png)");
-        
-        // Add DPI selection
-        var dpiLabel = new TextBlock { Text = "Select DPI:", Margin = new Thickness(0, 0, 0, 10) };
-        var dpiComboBox = new ComboBox
-        {
-            Margin = new Thickness(0, 0, 0, 20),
-            SelectedIndex = 1
-        };
-        dpiComboBox.Items.Add("150 DPI");
-        dpiComboBox.Items.Add("300 DPI");
-        dpiComboBox.Items.Add("600 DPI");
-        
-        var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        var cancelButton = new Button { Content = "Cancel", Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(5, 0, 0, 0) };
-        var okButton = new Button { Content = "OK", Padding = new Thickness(10, 5, 10, 5), IsDefault = true };
-        
-        cancelButton.Click += (s, args) => { formatWindow.DialogResult = false; };
-        okButton.Click += (s, args) => { formatWindow.DialogResult = true; };
-        
-        buttonsPanel.Children.Add(okButton);
-        buttonsPanel.Children.Add(cancelButton);
-        
-        stackPanel.Children.Add(formatLabel);
-        stackPanel.Children.Add(formatComboBox);
-        stackPanel.Children.Add(dpiLabel);
-        stackPanel.Children.Add(dpiComboBox);
-        stackPanel.Children.Add(buttonsPanel);
-        
-        formatWindow.Content = stackPanel;
-        
-        // Show the dialog and process the result
-        bool? result = formatWindow.ShowDialog();
-        
-        if (result == true)
-        {
-            string extension;
-            ImageFormat imageFormat;
+            var mainPanel = new StackPanel { Margin = new Thickness(20) };
             
-            // Determine the selected format
-            if (formatComboBox.SelectedIndex == 0) // JPEG
-            {
-                extension = ".jpg";
-                imageFormat = ImageFormat.Jpeg;
-            }
-            else // PNG
-            {
-                extension = ".png";
-                imageFormat = ImageFormat.Png;
-            }
-            
-            // Determine selected DPI
-            int dpi;
-            switch (dpiComboBox.SelectedIndex)
-            {
-                case 0:
-                    dpi = 150;
-                    break;
-                case 2:
-                    dpi = 600;
-                    break;
-                default:
-                    dpi = 300;
-                    break;
-            }
-            
-            // Get the processing folder
-            string outputFolder = GetProcessingFolder(_currentFilePath);
-            if (outputFolder == null)
-            {
-                MessageBox.Show("Could not create processing folder. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            
-            string baseName = Path.GetFileNameWithoutExtension(_currentFilePath);
-            
-            try
-            {
-                // Show progress cursor
-                Mouse.OverrideCursor = Cursors.Wait;
-                
-                // Create a progress window
-                var progressWindow = new Window
-                {
-                    Title = "Converting PDF to Images",
-                    Width = 400,
-                    Height = 150,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    Owner = this,
-                    ResizeMode = ResizeMode.NoResize
-                };
-                
-                var progressPanel = new StackPanel { Margin = new Thickness(20) };
-                var progressLabel = new TextBlock { Text = "Initializing...", Margin = new Thickness(0, 0, 0, 10) };
-                var progressBar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 20 };
-                
-                progressPanel.Children.Add(progressLabel);
-                progressPanel.Children.Add(progressBar);
-                
-                progressWindow.Content = progressPanel;
-                progressWindow.Show();
-                
-                try
-                {
-                    // Set initial progress
-                    progressBar.Value = 0;
-                    progressLabel.Text = "Opening PDF document...";
-                    DoEvents();
-                    
-                    // Open the PDF document
-                    using (PdfReader reader = new PdfReader(_currentFilePath))
-                    {
-                        // Get the number of pages
-                        int pageCount = reader.NumberOfPages;
-                        progressBar.Maximum = pageCount;
-                        
-                        // Convert each page to an image
-                        for (int i = 1; i <= pageCount; i++)
-                        {
-                            string outputPath = Path.Combine(outputFolder, $"{baseName}_page{i}{extension}");
-                            
-                            // Update progress
-                            progressBar.Value = i - 1;
-                            progressLabel.Text = $"Converting page {i} of {pageCount}...";
-                            DoEvents();
-                            
-                            try
-                            {
-                                using (var bitmap = GetPageImage(reader, i, dpi))
-                                {
-                                    bitmap.Save(outputPath, imageFormat);
-                                }
-                            }
-                            catch (Exception pageEx)
-                            {
-                                // Log the error but continue with other pages
-                                Console.WriteLine($"Error converting page {i}: {pageEx.Message}");
-                                
-                                // Create an error image for this page
-                                using (var errorBitmap = new Bitmap(800, 600))
-                                {
-                                    using (var g = Graphics.FromImage(errorBitmap))
-                                    {
-                                        g.Clear(System.Drawing.Color.White);
-                                        g.DrawString($"Error converting page {i}: {pageEx.Message}", 
-                                            new System.Drawing.Font(System.Drawing.FontFamily.GenericSansSerif, 12, System.Drawing.FontStyle.Bold), 
-                                            System.Drawing.Brushes.Red, new System.Drawing.PointF(20, 20));
-                                    }
-                                    errorBitmap.Save(outputPath, imageFormat);
-                                }
-                            }
-                            
-                            // Update progress
-                            progressBar.Value = i;
-                            DoEvents();
-                        }
-                        
-                        progressLabel.Text = "Conversion complete!";
-                        progressBar.Value = progressBar.Maximum;
-                        DoEvents();
-                        
-                        // Wait a moment before closing the progress window
-                        System.Threading.Thread.Sleep(1000);
-                        progressWindow.Close();
-                        
-                        MessageBox.Show($"Successfully converted {pageCount} pages to {(formatComboBox.SelectedIndex == 0 ? "JPEG" : "PNG")} images.\n\nFiles saved to: {outputFolder}", 
-                            "Conversion Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-                        
-                        // Ask if the user wants to open the output folder
-                        if (MessageBox.Show("Would you like to open the output folder?", "Open Folder", 
-                            MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
-                        {
-                            Process.Start("explorer.exe", outputFolder);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    progressWindow.Close();
-                    MessageBox.Show($"Error converting PDF to images: {ex.Message}", "Conversion Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error converting PDF to images: {ex.Message}", "Conversion Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-    }
-
-    private Bitmap GetPageImage(PdfReader reader, int pageNumber, int dpi)
-    {
-        try
-        {
-            // Get the page size
-            var pageSize = reader.GetPageSize(pageNumber);
-            float width = pageSize.Width;
-            float height = pageSize.Height;
-            
-            // Calculate the output size based on DPI
-            int pxWidth = (int)(width * dpi / 72f);
-            int pxHeight = (int)(height * dpi / 72f);
-            
-            // Create a bitmap to render the PDF page
-            var bitmap = new Bitmap(pxWidth, pxHeight);
-            
-            try
-            {
-                using (var graphics = Graphics.FromImage(bitmap))
-                {
-                    // Set high quality rendering
-                    graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-                    
-                    // Clear the background
-                    graphics.Clear(System.Drawing.Color.White);
-                    
-                    // Try using iTextSharp directly for basic rendering
-                    try
-                    {
-                        // Use PdfContentByte to draw the page content
-                        using (var document = new Document(pageSize))
-                        {
-                            // Create a temporary PDF with just this page
-                            string tempPdfPath = Path.Combine(Path.GetTempPath(), $"temp_page_{pageNumber}_{Guid.NewGuid()}.pdf");
-                            
-                            try
-                            {
-                                using (FileStream fs = new FileStream(tempPdfPath, FileMode.Create))
-                                {
-                                    using (PdfCopy copy = new PdfCopy(document, fs))
-                                    {
-                                        document.Open();
-                                        copy.AddPage(copy.GetImportedPage(reader, pageNumber));
-                                    }
-                                }
-                                
-                                // Now try rendering with PdfiumViewer if available
-                                try
-                                {
-                                    using (var pdfDocument = PdfiumViewer.PdfDocument.Load(tempPdfPath))
-                                    {
-                                        pdfDocument.Render(0, graphics, graphics.DpiX, graphics.DpiY, 
-                                            new System.Drawing.Rectangle(0, 0, pxWidth, pxHeight), 
-                                            PdfiumViewer.PdfRenderFlags.CorrectFromDpi);
-                                    }
-                                }
-                                catch (Exception pdfiumEx)
-                                {
-                                    // PdfiumViewer failed, try alternate approach or fallback to text rendering
-                                    graphics.DrawString($"PDF Rendering Error: {pdfiumEx.Message}", 
-                                        new System.Drawing.Font(System.Drawing.FontFamily.GenericSansSerif, 10, System.Drawing.FontStyle.Regular), 
-                                        System.Drawing.Brushes.Black, new System.Drawing.PointF(10, 10));
-                                        
-                                    // Draw page information
-                                    graphics.DrawString($"Page {pageNumber} - Size: {width:0.##} x {height:0.##} pts", 
-                                        new System.Drawing.Font(System.Drawing.FontFamily.GenericSansSerif, 10, System.Drawing.FontStyle.Regular), 
-                                        System.Drawing.Brushes.Black, new System.Drawing.PointF(10, 30));
-                                }
-                                finally
-                                {
-                                    // Clean up the temporary file
-                                    try { File.Delete(tempPdfPath); } catch { /* Ignore deletion errors */ }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                graphics.DrawString($"Error extracting page: {ex.Message}", 
-                                    new System.Drawing.Font(System.Drawing.FontFamily.GenericSansSerif, 10, System.Drawing.FontStyle.Regular), 
-                                    System.Drawing.Brushes.Black, new System.Drawing.PointF(10, 10));
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        graphics.DrawString($"Error rendering page: {ex.Message}", 
-                            new System.Drawing.Font(System.Drawing.FontFamily.GenericSansSerif, 12, System.Drawing.FontStyle.Bold), 
-                            System.Drawing.Brushes.Red, new System.Drawing.PointF(20, 20));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // If rendering fails, add error text to the bitmap
-                using (var graphics = Graphics.FromImage(bitmap))
-                {
-                    graphics.Clear(System.Drawing.Color.White);
-                    graphics.DrawString($"Error: {ex.Message}", 
-                        new System.Drawing.Font(System.Drawing.FontFamily.GenericSansSerif, 12, System.Drawing.FontStyle.Bold), 
-                        System.Drawing.Brushes.Red, new System.Drawing.PointF(20, 20));
-                }
-            }
-            
-            return bitmap;
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Error creating image from PDF: {ex.Message}", "PDF Conversion Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            
-            // Return a blank image with error message if conversion fails
-            var errorBitmap = new Bitmap(800, 600);
-            using (var graphics = Graphics.FromImage(errorBitmap))
-            {
-                graphics.Clear(System.Drawing.Color.White);
-                graphics.DrawString($"Error converting PDF: {ex.Message}", 
-                    new System.Drawing.Font(System.Drawing.FontFamily.GenericSansSerif, 12, System.Drawing.FontStyle.Bold), 
-                    System.Drawing.Brushes.Red, new System.Drawing.PointF(20, 20));
-            }
-            return errorBitmap;
-        }
-    }
-
-    // Helper method to allow UI updates during processing
-    private void DoEvents()
-    {
-        DispatcherFrame frame = new DispatcherFrame();
-        Dispatcher.CurrentDispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
-            new System.Windows.Threading.DispatcherOperationCallback(delegate(object f)
-            {
-                ((DispatcherFrame)f).Continue = false;
-                return null;
-            }), frame);
-        System.Windows.Threading.Dispatcher.PushFrame(frame);
-    }
-
-    private void BtnSetPassword_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || !_isPdf)
-        {
-            MessageBox.Show("No PDF document is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        // Create a popup to input the password
-        var passwordWindow = new Window
-        {
-            Title = "Set PDF Password",
-            Width = 350,
-            Height = 220,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner = this,
-            ResizeMode = ResizeMode.NoResize
-        };
-
-        var stackPanel = new StackPanel { Margin = new Thickness(20) };
-        
-        var passwordLabel = new TextBlock { Text = "Enter password:", Margin = new Thickness(0, 0, 0, 5) };
-        var passwordBox = new PasswordBox { Margin = new Thickness(0, 0, 0, 15) };
-        
-        var confirmLabel = new TextBlock { Text = "Confirm password:", Margin = new Thickness(0, 0, 0, 5) };
-        var confirmBox = new PasswordBox { Margin = new Thickness(0, 0, 0, 20) };
-        
-        var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        var cancelButton = new Button { Content = "Cancel", Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(5, 0, 0, 0) };
-        var okButton = new Button { Content = "OK", Padding = new Thickness(10, 5, 10, 5), IsDefault = true };
-
-        cancelButton.Click += (s, args) => { passwordWindow.DialogResult = false; };
-        okButton.Click += (s, args) => 
-        {
-            if (string.IsNullOrEmpty(passwordBox.Password))
-            {
-                MessageBox.Show("Password cannot be empty.", "Password Required", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            
-            if (passwordBox.Password != confirmBox.Password)
-            {
-                MessageBox.Show("Passwords do not match.", "Password Mismatch", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            
-            passwordWindow.DialogResult = true;
-        };
-
-        buttonsPanel.Children.Add(okButton);
-        buttonsPanel.Children.Add(cancelButton);
-
-        stackPanel.Children.Add(passwordLabel);
-        stackPanel.Children.Add(passwordBox);
-        stackPanel.Children.Add(confirmLabel);
-        stackPanel.Children.Add(confirmBox);
-        stackPanel.Children.Add(buttonsPanel);
-
-        passwordWindow.Content = stackPanel;
-
-        // Show the dialog and process the result
-        bool? result = passwordWindow.ShowDialog();
-
-        if (result == true)
-        {
-            // Get the processing folder and output file path
-            string processingFolder = GetProcessingFolder(_currentFilePath);
-            if (processingFolder == null)
-            {
-                MessageBox.Show("Could not create processing folder. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            
-            string outputFileName = "protected_" + Path.GetFileName(_currentFilePath);
-            string outputPath = Path.Combine(processingFolder, outputFileName);
-
-            try
-            {
-                // Show progress cursor
-                Mouse.OverrideCursor = Cursors.Wait;
-                
-                // Copy the original file to a temporary location
-                string tempFile = Path.GetTempFileName();
-                File.Copy(_currentFilePath, tempFile, true);
-                
-                // Read the PDF
-                using (PdfReader reader = new PdfReader(tempFile))
-                {
-                    // Encrypt the PDF with the provided password
-                    using (FileStream fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
-                    {
-                        PdfEncryptor.Encrypt(reader, fs, true, passwordBox.Password, passwordBox.Password, PdfWriter.ALLOW_PRINTING);
-                    }
-                }
-                
-                // Delete the temporary file
-                File.Delete(tempFile);
-                
-                MessageBox.Show($"Password protection added successfully!\n\nFile saved to: {outputPath}", "Protection Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-                
-                // Ask if user wants to open the protected PDF
-                var openResult = MessageBox.Show("Do you want to open the protected PDF?", "Open File", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (openResult == MessageBoxResult.Yes)
-                {
-                    LoadDocument(outputPath);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error protecting PDF: {ex.Message}", "Protection Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                // Restore cursor
-                Mouse.OverrideCursor = null;
-            }
-        }
-    }
-
-    private void BtnRemovePassword_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || !_isPdf)
-        {
-            MessageBox.Show("No PDF document is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-        
-        // Create a popup to input the current password
-        var passwordWindow = new Window
-        {
-            Title = "Remove PDF Password",
-            Width = 350,
-            Height = 170,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner = this,
-            ResizeMode = ResizeMode.NoResize
-        };
-
-        var stackPanel = new StackPanel { Margin = new Thickness(20) };
-        
-        var passwordLabel = new TextBlock { Text = "Enter current password:", Margin = new Thickness(0, 0, 0, 5) };
-        var passwordBox = new PasswordBox { Margin = new Thickness(0, 0, 0, 20) };
-        
-        var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        var cancelButton = new Button { Content = "Cancel", Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(5, 0, 0, 0) };
-        var okButton = new Button { Content = "OK", Padding = new Thickness(10, 5, 10, 5), IsDefault = true };
-
-        cancelButton.Click += (s, args) => { passwordWindow.DialogResult = false; };
-        okButton.Click += (s, args) => 
-        {
-            if (string.IsNullOrEmpty(passwordBox.Password))
-            {
-                MessageBox.Show("Password cannot be empty.", "Password Required", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-            
-            passwordWindow.DialogResult = true;
-        };
-
-        buttonsPanel.Children.Add(okButton);
-        buttonsPanel.Children.Add(cancelButton);
-
-        stackPanel.Children.Add(passwordLabel);
-        stackPanel.Children.Add(passwordBox);
-        stackPanel.Children.Add(buttonsPanel);
-
-        passwordWindow.Content = stackPanel;
-
-        // Show the dialog and process the result
-        bool? result = passwordWindow.ShowDialog();
-
-        if (result == true)
-        {
-            // Get the processing folder and output file path
-            string processingFolder = GetProcessingFolder(_currentFilePath);
-            if (processingFolder == null)
-            {
-                MessageBox.Show("Could not create processing folder. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            
-            string outputFileName = "unprotected_" + Path.GetFileName(_currentFilePath);
-            string outputPath = Path.Combine(processingFolder, outputFileName);
-
-            try
-            {
-                // Show progress cursor
-                Mouse.OverrideCursor = Cursors.Wait;
-                
-                // Try to open the PDF with the provided password
-                PdfReader reader;
-                try
-                {
-                    reader = new PdfReader(_currentFilePath, System.Text.Encoding.ASCII.GetBytes(passwordBox.Password));
-                }
-                catch (Exception)
-                {
-                    MessageBox.Show("Incorrect password. Could not open the PDF.", "Password Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-                
-                using (reader)
-                {
-                    // Check if the PDF is actually encrypted
-                    if (!reader.IsEncrypted())
-                    {
-                        MessageBox.Show("This PDF file is not password protected.", "Not Protected", MessageBoxButton.OK, MessageBoxImage.Information);
-                        return;
-                    }
-                    
-                    // Create a new unencrypted PDF
-                    using (FileStream fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
-                    {
-                        using (Document document = new Document())
-                        {
-                            PdfCopy copy = new PdfCopy(document, fs);
-                            document.Open();
-                            
-                            int pageCount = reader.NumberOfPages;
-                            for (int i = 1; i <= pageCount; i++)
-                            {
-                                copy.AddPage(copy.GetImportedPage(reader, i));
-                            }
-                            
-                            document.Close();
-                        }
-                    }
-                }
-                
-                MessageBox.Show($"Password protection removed successfully!\n\nFile saved to: {outputPath}", "Protection Removed", MessageBoxButton.OK, MessageBoxImage.Information);
-                
-                // Ask if user wants to open the unprotected PDF
-                var openResult = MessageBox.Show("Do you want to open the unprotected PDF?", "Open File", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (openResult == MessageBoxResult.Yes)
-                {
-                    LoadDocument(outputPath);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error removing password protection: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                // Restore cursor
-                Mouse.OverrideCursor = null;
-            }
-        }
-    }
-
-    private void BtnSignPdf_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || !_isPdf)
-            {
-                MessageBox.Show("No PDF document is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            
-            // Create a popup to get the signature information
-            var signatureWindow = new Window
-            {
-                Title = "Sign PDF Document",
-                Width = 400,
-                Height = 350,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Owner = this,
-                ResizeMode = ResizeMode.NoResize
-            };
-
-            var stackPanel = new StackPanel { Margin = new Thickness(20) };
-            
-            var nameLabel = new TextBlock { Text = "Signatory Name:", Margin = new Thickness(0, 0, 0, 5) };
-            var nameBox = new TextBox { Margin = new Thickness(0, 0, 0, 15) };
-            
-            var reasonLabel = new TextBlock { Text = "Reason for Signing:", Margin = new Thickness(0, 0, 0, 5) };
-            var reasonBox = new TextBox { Margin = new Thickness(0, 0, 0, 15) };
-            
-            var locationLabel = new TextBlock { Text = "Location:", Margin = new Thickness(0, 0, 0, 5) };
-            var locationBox = new TextBox { Margin = new Thickness(0, 0, 0, 15) };
-            
-            var signatureImageLabel = new TextBlock { Text = "Signature Image (optional):", Margin = new Thickness(0, 0, 0, 5) };
-            var signatureImagePanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 20) };
-            var signatureImagePath = new TextBox { Width = 250, IsReadOnly = true };
-            var browseButton = new Button { Content = "Browse", Padding = new Thickness(8, 2, 8, 2), Margin = new Thickness(5, 0, 0, 0) };
-            
-            signatureImagePanel.Children.Add(signatureImagePath);
-            signatureImagePanel.Children.Add(browseButton);
-            
-            browseButton.Click += (s, args) =>
-            {
-                try
-                {
-                    OpenFileDialog openFileDialog = new OpenFileDialog
-                    {
-                        Filter = "Image Files (*.jpg; *.jpeg; *.png; *.bmp)|*.jpg;*.jpeg;*.png;*.bmp",
-                        Title = "Select Signature Image"
-                    };
-
-                    if (openFileDialog.ShowDialog() == true)
-                    {
-                        signatureImagePath.Text = openFileDialog.FileName;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error selecting image: {ex.Message}", "File Selection Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
+            var docTypeLabel = new TextBlock 
+            { 
+                Text = "Choose a document type to test:", 
+                Margin = new Thickness(0, 0, 0, 10),
+                FontWeight = FontWeights.SemiBold
             };
             
-            var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            var cancelButton = new Button { Content = "Cancel", Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(5, 0, 0, 0) };
-            var okButton = new Button { Content = "Sign PDF", Padding = new Thickness(10, 5, 10, 5), IsDefault = true };
-
-            cancelButton.Click += (s, args) => { signatureWindow.DialogResult = false; };
-            okButton.Click += (s, args) => 
-            {
-                if (string.IsNullOrEmpty(nameBox.Text))
-                {
-                    MessageBox.Show("Signatory name is required.", "Name Required", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-                
-                signatureWindow.DialogResult = true;
+            var radioButtonPanel = new StackPanel();
+            
+            var rbInvoice = new RadioButton 
+            { 
+                Content = "Invoice", 
+                IsChecked = true, 
+                Margin = new Thickness(0, 5, 0, 5),
+                GroupName = "DocType"
             };
-
+            
+            var rbReceipt = new RadioButton 
+            { 
+                Content = "Receipt", 
+                Margin = new Thickness(0, 5, 0, 5),
+                GroupName = "DocType"
+            };
+            
+            var rbPO = new RadioButton 
+            { 
+                Content = "Purchase Order", 
+                Margin = new Thickness(0, 5, 0, 5),
+                GroupName = "DocType"
+            };
+            
+            var rbDO = new RadioButton 
+            { 
+                Content = "Delivery Order", 
+                Margin = new Thickness(0, 5, 0, 5),
+                GroupName = "DocType"
+            };
+            
+            var rbBC = new RadioButton 
+            { 
+                Content = "Business Card", 
+                Margin = new Thickness(0, 5, 0, 5),
+                GroupName = "DocType"
+            };
+            
+            radioButtonPanel.Children.Add(rbInvoice);
+            radioButtonPanel.Children.Add(rbReceipt);
+            radioButtonPanel.Children.Add(rbPO);
+            radioButtonPanel.Children.Add(rbDO);
+            radioButtonPanel.Children.Add(rbBC);
+            
+            var buttonsPanel = new StackPanel 
+            { 
+                Orientation = Orientation.Horizontal, 
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 20, 0, 0)
+            };
+            
+            var cancelButton = new Button 
+            { 
+                Content = "Cancel", 
+                Padding = new Thickness(10, 5, 10, 5), 
+                Margin = new Thickness(5, 0, 0, 0) 
+            };
+            
+            var okButton = new Button 
+            { 
+                Content = "OK", 
+                Padding = new Thickness(10, 5, 10, 5), 
+                IsDefault = true 
+            };
+            
+            cancelButton.Click += (s, args) => { selectWindow.DialogResult = false; };
+            okButton.Click += (s, args) => { selectWindow.DialogResult = true; };
+            
             buttonsPanel.Children.Add(okButton);
             buttonsPanel.Children.Add(cancelButton);
-
-            stackPanel.Children.Add(nameLabel);
-            stackPanel.Children.Add(nameBox);
-            stackPanel.Children.Add(reasonLabel);
-            stackPanel.Children.Add(reasonBox);
-            stackPanel.Children.Add(locationLabel);
-            stackPanel.Children.Add(locationBox);
-            stackPanel.Children.Add(signatureImageLabel);
-            stackPanel.Children.Add(signatureImagePanel);
-            stackPanel.Children.Add(buttonsPanel);
-
-            signatureWindow.Content = stackPanel;
-
-            // Show the dialog and process the result
-            bool? result = signatureWindow.ShowDialog();
-
-            if (result == true)
+            
+            mainPanel.Children.Add(docTypeLabel);
+            mainPanel.Children.Add(radioButtonPanel);
+            mainPanel.Children.Add(buttonsPanel);
+            
+            selectWindow.Content = mainPanel;
+            
+            // Show the window and process results
+            if (selectWindow.ShowDialog() == true)
             {
-                // Get the processing folder
-                string processingFolder = GetProcessingFolder(_currentFilePath);
-                if (processingFolder == null)
-                {
-                    MessageBox.Show("Could not create processing folder. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
+                string selectedDocType = "Invoice"; // Default
                 
-                string outputFileName = "signed_" + Path.GetFileName(_currentFilePath);
-                string outputPath = Path.Combine(processingFolder, outputFileName);
+                if (rbInvoice.IsChecked == true) selectedDocType = "Invoice";
+                else if (rbReceipt.IsChecked == true) selectedDocType = "Receipt";
+                else if (rbPO.IsChecked == true) selectedDocType = "Purchase Order";
+                else if (rbDO.IsChecked == true) selectedDocType = "Delivery Order";
+                else if (rbBC.IsChecked == true) selectedDocType = "Business Card";
                 
-                try
-                {
-                    // Show progress cursor
-                    Mouse.OverrideCursor = Cursors.Wait;
-                    
-                    // Get signature information
-                    string name = nameBox.Text;
-                    string reason = reasonBox.Text;
-                    string location = locationBox.Text;
-                    string imagePath = signatureImagePath.Text;
-                    
-                    // Copy original file first
-                    File.Copy(_currentFilePath, outputPath, true);
-                    
-                    // Use a simpler approach to avoid crashes with iTextSharp
-                    try
-                    {
-                        // Create the signature appearance
-                        using (PdfReader reader = new PdfReader(_currentFilePath))
-                        {
-                            using (FileStream fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
-                            {
-                                try
-                                {
-                                    using (PdfStamper stamper = new PdfStamper(reader, fs))
-                                    {
-                                        try
-                                        {
-                                            // Get the first page
-                                            PdfContentByte content = stamper.GetOverContent(1);
-                                            
-                                            // Create a signature text
-                                            string signatureText = $"Signed by: {name}\n";
-                                            if (!string.IsNullOrEmpty(reason))
-                                                signatureText += $"Reason: {reason}\n";
-                                            if (!string.IsNullOrEmpty(location))
-                                                signatureText += $"Location: {location}\n";
-                                            signatureText += $"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
-                                            
-                                            // Add text directly to PDF
-                                            iTextSharp.text.Rectangle pageSize = reader.GetPageSize(1);
-                                            float x = pageSize.Right - 200;
-                                            float y = pageSize.Bottom + 100;
-                                            
-                                            // Create a rectangle for the signature box
-                                            content.Rectangle(x, y, x + 180, y + 80);
-                                            content.Stroke();
-                                            
-                                            // Add signature text
-                                            iTextSharp.text.Font font = new iTextSharp.text.Font(iTextSharp.text.Font.FontFamily.HELVETICA, 10);
-                                            
-                                            // Create a ColumnText for text layout
-                                            iTextSharp.text.pdf.ColumnText ct = new iTextSharp.text.pdf.ColumnText(content);
-                                            ct.SetSimpleColumn(x + 5, y + 5, x + 175, y + 75);
-                                            ct.AddText(new iTextSharp.text.Paragraph(signatureText, font));
-                                            ct.Go();
-                                            
-                                            // Add image if provided
-                                            if (!string.IsNullOrEmpty(imagePath) && File.Exists(imagePath))
-                                            {
-                                                try
-                                                {
-                                                    iTextSharp.text.Image image = iTextSharp.text.Image.GetInstance(imagePath);
-                                                    // Scale the image if needed
-                                                    float maxWidth = 80;
-                                                    float maxHeight = 40;
-                                                    
-                                                    if (image.Width > maxWidth || image.Height > maxHeight)
-                                                    {
-                                                        float scale = Math.Min(maxWidth / image.Width, maxHeight / image.Height);
-                                                        image.ScalePercent(scale * 100);
-                                                    }
-                                                    
-                                                    image.SetAbsolutePosition(x + 5, y + 40);
-                                                    content.AddImage(image);
-                                                }
-                                                catch (Exception ex)
-                                                {
-                                                    MessageBox.Show($"Error adding signature image: {ex.Message}", "Image Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                                                }
-                                            }
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            MessageBox.Show($"Error formatting PDF: {ex.Message}", "Format Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                                        }
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    MessageBox.Show($"Error creating PDF stamper: {ex.Message}", "Stamper Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                                }
-                            }
-                        }
-                        
-                        MessageBox.Show("PDF signed successfully!", "Signing Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-                        
-                        // Ask if user wants to open the signed PDF
-                        var openResult = MessageBox.Show("Do you want to open the signed PDF?", "Open File", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                        if (openResult == MessageBoxResult.Yes)
-                        {
-                            LoadDocument(outputPath);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Error signing PDF: {ex.Message}\n\nStack Trace: {ex.StackTrace}", "Signing Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Load the selected document type for validation
+                LoadSampleJsonForValidation(selectedDocType);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error processing file: {ex.Message}", "Processing Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-                finally
-                {
-                    // Restore cursor
-                    Mouse.OverrideCursor = null;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"An error occurred during the signing process: {ex.Message}\n\nStack Trace: {ex.StackTrace}", 
-                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            
-            // Reset cursor in case of error
-            Mouse.OverrideCursor = null;
+            MessageBox.Show($"Error testing validation: {ex.Message}", "Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    private void BtnConvertToPdf_Click(object sender, RoutedEventArgs e)
+    // Attempt to repair seriously malformed JSON with common patterns
+    private string AttemptAdvancedJsonRepair(string input)
     {
+        if (string.IsNullOrEmpty(input))
+            return "{}";
+            
+        string result = input;
+        
         try
         {
-            if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || _isPdf)
-            {
-                MessageBox.Show("No image is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            // Get the processing folder
-            string processingFolder = GetProcessingFolder(_currentFilePath);
-            if (processingFolder == null)
-            {
-                MessageBox.Show("Could not create processing folder. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-            
-            string outputFileName = Path.GetFileNameWithoutExtension(_currentFilePath) + ".pdf";
-            string outputPath = Path.Combine(processingFolder, outputFileName);
-            
-            // Show wait cursor
-            Mouse.OverrideCursor = Cursors.Wait;
-            
-            try
-            {
-                using (var document = new Document())
-                {
-                    // Create a FileStream to write the PDF
-                    using (var fs = new FileStream(outputPath, FileMode.Create, FileAccess.Write))
-                    {
-                        // Create a PdfWriter to write to the document
-                        var writer = PdfWriter.GetInstance(document, fs);
-                        document.Open();
-
-                        // Create an iTextSharp image from the loaded image
-                        using (var image = System.Drawing.Image.FromFile(_currentFilePath))
-                        {
-                            // Create iTextSharp image
-                            var pdfImage = iTextSharp.text.Image.GetInstance(image, ImageFormat.Jpeg);
-                            
-                            // Scale image to fit the page
-                            pdfImage.ScaleToFit(document.PageSize.Width - document.LeftMargin - document.RightMargin,
-                                              document.PageSize.Height - document.TopMargin - document.BottomMargin);
-                            
-                            // Add the image to the document
-                            document.Add(pdfImage);
-                        }
-                        
-                        document.Close();
-                    }
-                }
+            // Add missing braces if needed
+            if (!result.TrimStart().StartsWith("{"))
+                result = "{" + result;
                 
-                MessageBox.Show($"Image successfully converted to PDF.\n\nFile saved to: {outputPath}", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (!result.TrimEnd().EndsWith("}"))
+                result = result + "}";
                 
-                // Ask if user wants to open the PDF
-                var result = MessageBox.Show("Do you want to open the converted PDF?", "Open File", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (result == MessageBoxResult.Yes)
-                {
-                    LoadDocument(outputPath);
-                }
-            }
-            finally
-            {
-                // Reset cursor
-                Mouse.OverrideCursor = null;
-            }
+            // Fix property names without quotes
+            result = System.Text.RegularExpressions.Regex.Replace(
+                result,
+                @"(\s*)(\w+)(\s*):", 
+                m => $"{m.Groups[1].Value}\"{m.Groups[2].Value}\"{m.Groups[3].Value}:");
+                
+            // Fix missing quotes around string values 
+            result = System.Text.RegularExpressions.Regex.Replace(
+                result,
+                @":(\s*)([^""\d\s\[\]{},][^,\[\]{}]*?)(\s*)(,|$|]|})", 
+                m => $":{m.Groups[1].Value}\"{m.Groups[2].Value.Trim()}\"{m.Groups[3].Value}{m.Groups[4].Value}");
+                
+            // Fix missing commas between properties
+            result = System.Text.RegularExpressions.Regex.Replace(
+                result, 
+                @"}(\s*)""", 
+                "},\"");
+                
+            // Fix trailing commas
+            result = result.Replace(",}", "}").Replace(",]", "]");
+            
+            // Fix repeated commas
+            result = result.Replace(",,", ",");
+            
+            return result;
         }
-        catch (Exception ex)
+        catch
         {
-            Mouse.OverrideCursor = null;
-            MessageBox.Show($"Error converting image to PDF: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void BtnIncreaseDpi_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || _isPdf)
-            {
-                MessageBox.Show("No image is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            // Create an input dialog to get the target DPI
-            var dpiDialog = new InputDialog("Enter target DPI (96-600):", "Increase DPI", "300");
-            if (dpiDialog.ShowDialog() == true)
-            {
-                if (!int.TryParse(dpiDialog.Answer, out int targetDpi) || targetDpi < 96 || targetDpi > 600)
-                {
-                    MessageBox.Show("Please enter a valid DPI value between 96 and 600.", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Get the processing folder
-                string processingFolder = GetProcessingFolder(_currentFilePath);
-                if (processingFolder == null)
-                {
-                    MessageBox.Show("Could not create processing folder. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-                
-                string outputFileName = Path.GetFileNameWithoutExtension(_currentFilePath) + "_" + targetDpi + "dpi" + Path.GetExtension(_currentFilePath);
-                string outputPath = Path.Combine(processingFolder, outputFileName);
-                
-                // Show wait cursor
-                Mouse.OverrideCursor = Cursors.Wait;
-                
-                try
-                {
-                    // Load the original image
-                    using (var originalImage = System.Drawing.Image.FromFile(_currentFilePath))
-                    {
-                        // Get original DPI
-                        float originalDpiX = originalImage.HorizontalResolution;
-                        float originalDpiY = originalImage.VerticalResolution;
-                        
-                        // Calculate size ratio
-                        float ratioX = targetDpi / originalDpiX;
-                        float ratioY = targetDpi / originalDpiY;
-                        
-                        // Calculate new dimensions
-                        int newWidth = (int)(originalImage.Width * ratioX);
-                        int newHeight = (int)(originalImage.Height * ratioY);
-                        
-                        // Create a new bitmap with the new dimensions
-                        using (var newImage = new Bitmap(newWidth, newHeight))
-                        {
-                            // Set the resolution
-                            newImage.SetResolution(targetDpi, targetDpi);
-                            
-                            // Draw the original image onto the new bitmap, scaling it
-                            using (var g = Graphics.FromImage(newImage))
-                            {
-                                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                                g.DrawImage(originalImage, 0, 0, newWidth, newHeight);
-                            }
-                            
-                            // Save the new image
-                            ImageFormat format = Path.GetExtension(outputPath).ToLower() == ".png" 
-                                ? ImageFormat.Png 
-                                : ImageFormat.Jpeg;
-                            
-                            newImage.Save(outputPath, format);
-                        }
-                    }
-                    
-                    MessageBox.Show($"Image DPI increased to {targetDpi}.\n\nFile saved to: {outputPath}", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                    
-                    // Ask if user wants to open the new image
-                    var result = MessageBox.Show("Do you want to open the new image?", "Open File", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                    if (result == MessageBoxResult.Yes)
-                    {
-                        LoadDocument(outputPath);
-                    }
-                }
-                finally
-                {
-                    // Reset cursor
-                    Mouse.OverrideCursor = null;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Mouse.OverrideCursor = null;
-            MessageBox.Show($"Error increasing image DPI: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void BtnCropImage_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || _isPdf)
-            {
-                MessageBox.Show("No image is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            // Create a new window to perform the cropping
-            var cropWindow = new Window
-            {
-                Title = "Crop Image",
-                Width = 800,
-                Height = 600,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Owner = this
-            };
-
-            // Create the layout
-            var mainGrid = new Grid();
-            
-            // Image container (top part)
-            var imageControl = new System.Windows.Controls.Image
-            {
-                Source = new BitmapImage(new Uri(_currentFilePath)),
-                Stretch = System.Windows.Media.Stretch.Uniform,
-                Margin = new Thickness(10)
-            };
-            
-            // Canvas for drawing the selection rectangle
-            var canvas = new Canvas();
-            
-            // Grid for overlaying the canvas on top of the image
-            var imageGrid = new Grid();
-            imageGrid.Children.Add(imageControl);
-            imageGrid.Children.Add(canvas);
-            
-            // Button panel (bottom part)
-            var buttonPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(10),
-                Height = 40
-            };
-            
-            var cropButton = new Button
-            {
-                Content = "Crop",
-                Padding = new Thickness(20, 5, 20, 5),
-                Margin = new Thickness(5)
-            };
-            
-            var cancelButton = new Button
-            {
-                Content = "Cancel",
-                Padding = new Thickness(20, 5, 20, 5),
-                Margin = new Thickness(5)
-            };
-            
-            buttonPanel.Children.Add(cropButton);
-            buttonPanel.Children.Add(cancelButton);
-            
-            // Add the components to the main grid
-            mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            
-            Grid.SetRow(imageGrid, 0);
-            Grid.SetRow(buttonPanel, 1);
-            
-            mainGrid.Children.Add(imageGrid);
-            mainGrid.Children.Add(buttonPanel);
-            
-            cropWindow.Content = mainGrid;
-            
-            // Rectangle for selection
-            System.Windows.Shapes.Rectangle selectionRect = null;
-            System.Windows.Point startPoint = new System.Windows.Point();
-            
-            // Flags to track mouse state
-            bool isSelecting = false;
-            bool hasSelection = false;
-            
-            // Handler for mouse down (start selection)
-            canvas.MouseLeftButtonDown += (s, args) =>
-            {
-                // Clear any existing selection
-                if (selectionRect != null)
-                {
-                    canvas.Children.Remove(selectionRect);
-                    hasSelection = false;
-                }
-                
-                startPoint = args.GetPosition(canvas);
-                
-                selectionRect = new System.Windows.Shapes.Rectangle
-                {
-                    Stroke = System.Windows.Media.Brushes.Blue,
-                    StrokeThickness = 2,
-                    Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(50, 0, 0, 255))
-                };
-                
-                Canvas.SetLeft(selectionRect, startPoint.X);
-                Canvas.SetTop(selectionRect, startPoint.Y);
-                
-                canvas.Children.Add(selectionRect);
-                
-                isSelecting = true;
-                canvas.CaptureMouse();
-            };
-            
-            // Handler for mouse move (update selection)
-            canvas.MouseMove += (s, args) =>
-            {
-                if (!isSelecting) return;
-                
-                var currentPoint = args.GetPosition(canvas);
-                
-                double left = Math.Min(startPoint.X, currentPoint.X);
-                double top = Math.Min(startPoint.Y, currentPoint.Y);
-                double width = Math.Abs(currentPoint.X - startPoint.X);
-                double height = Math.Abs(currentPoint.Y - startPoint.Y);
-                
-                Canvas.SetLeft(selectionRect, left);
-                Canvas.SetTop(selectionRect, top);
-                selectionRect.Width = width;
-                selectionRect.Height = height;
-            };
-            
-            // Handler for mouse up (end selection)
-            canvas.MouseLeftButtonUp += (s, args) =>
-            {
-                if (isSelecting)
-                {
-                    isSelecting = false;
-                    canvas.ReleaseMouseCapture();
-                    
-                    if (selectionRect.Width > 5 && selectionRect.Height > 5)
-                    {
-                        hasSelection = true;
-                    }
-                    else
-                    {
-                        canvas.Children.Remove(selectionRect);
-                        selectionRect = null;
-                    }
-                }
-            };
-            
-            // Handler for the crop button
-            cropButton.Click += (s, args) =>
-            {
-                if (!hasSelection || selectionRect == null)
-                {
-                    MessageBox.Show("Please select an area to crop.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-                
-                try
-                {
-                    // Get the processing folder
-                    string processingFolder = GetProcessingFolder(_currentFilePath);
-                    if (processingFolder == null)
-                    {
-                        MessageBox.Show("Could not create processing folder. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                        return;
-                    }
-                    
-                    string outputFileName = "cropped_" + Path.GetFileName(_currentFilePath);
-                    string outputPath = Path.Combine(processingFolder, outputFileName);
-                    
-                    // Show wait cursor
-                    Mouse.OverrideCursor = Cursors.Wait;
-                    
-                    // Calculate the crop rectangle in terms of the original image
-                    BitmapSource originalBitmap = (BitmapSource)imageControl.Source;
-                    
-                    double scaleX = originalBitmap.PixelWidth / imageControl.ActualWidth;
-                    double scaleY = originalBitmap.PixelHeight / imageControl.ActualHeight;
-                    
-                    double cropLeft = Canvas.GetLeft(selectionRect) * scaleX;
-                    double cropTop = Canvas.GetTop(selectionRect) * scaleY;
-                    double cropWidth = selectionRect.Width * scaleX;
-                    double cropHeight = selectionRect.Height * scaleY;
-                    
-                    // Ensure crop rectangle is within the image bounds
-                    cropLeft = Math.Max(0, cropLeft);
-                    cropTop = Math.Max(0, cropTop);
-                    cropWidth = Math.Min(originalBitmap.PixelWidth - cropLeft, cropWidth);
-                    cropHeight = Math.Min(originalBitmap.PixelHeight - cropTop, cropHeight);
-                    
-                    // Create a temporary file for the image data
-                    string tempFile = Path.GetTempFileName();
-                    try
-                    {
-                        // Save current image to temp file to ensure proper initialization
-                        using (FileStream fs = new FileStream(tempFile, FileMode.Create))
-                        {
-                            BitmapEncoder encoder = new PngBitmapEncoder();
-                            encoder.Frames.Add(BitmapFrame.Create(originalBitmap));
-                            encoder.Save(fs);
-                        }
-                        
-                        // Load the image and perform the crop using System.Drawing
-                        using (var bitmap = new System.Drawing.Bitmap(tempFile))
-                        {
-                            // Create high-quality bitmap for the cropped result
-                            using (var cropped = new System.Drawing.Bitmap((int)cropWidth, (int)cropHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
-                            {
-                                using (var g = System.Drawing.Graphics.FromImage(cropped))
-                                {
-                                    // Configure for high quality
-                                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-                                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-                                    g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
-                                    
-                                    // Draw the cropped portion
-                                    g.DrawImage(bitmap, 
-                                        new System.Drawing.Rectangle(0, 0, (int)cropWidth, (int)cropHeight),
-                                        new System.Drawing.Rectangle((int)cropLeft, (int)cropTop, (int)cropWidth, (int)cropHeight),
-                                        System.Drawing.GraphicsUnit.Pixel);
-                                }
-                                
-                                // Save the cropped image
-                                cropped.Save(outputPath, GetImageFormat(Path.GetExtension(_currentFilePath)));
-                            }
-                        }
-                        
-                        MessageBox.Show($"Image cropped successfully!\n\nFile saved to: {outputPath}", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                        
-                        // Ask if user wants to open the cropped image
-                        var result = MessageBox.Show("Do you want to open the cropped image?", "Open File", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                        if (result == MessageBoxResult.Yes)
-                        {
-                            LoadDocument(outputPath);
-                        }
-                    }
-                    finally
-                    {
-                        // Clean up temp file on a background thread to avoid delays
-                        if (File.Exists(tempFile))
-                        {
-                            Task.Run(() => 
-                            {
-                                try { File.Delete(tempFile); } 
-                                catch { /* Ignore cleanup errors */ }
-                            });
-                        }
-                        
-                        // Reset cursor
-                        Mouse.OverrideCursor = null;
-                    }
-                    
-                    cropWindow.Close();
-                }
-                catch (Exception ex)
-                {
-                    Mouse.OverrideCursor = null;
-                    MessageBox.Show($"Error cropping image: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            };
-            
-            // Handler for the cancel button
-            cancelButton.Click += (s, args) => cropWindow.Close();
-            
-            // Show the window
-            cropWindow.ShowDialog();
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Error opening crop window: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            // If repair process fails, return the original input
+            return input;
         }
     }
     
-    private System.Drawing.Imaging.ImageFormat GetImageFormat(string extension)
+    // Helper method to convert a string to camelCase
+    private string ConvertToCamelCase(string input)
     {
-        switch (extension.ToLower())
+        if (string.IsNullOrEmpty(input))
+            return input;
+            
+        string[] words = input.Split(new[] { ' ', '_', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        string result = words[0].ToLower();
+        
+        for (int i = 1; i < words.Length; i++)
         {
-            case ".jpg":
-            case ".jpeg":
-                return System.Drawing.Imaging.ImageFormat.Jpeg;
-            case ".png":
-                return System.Drawing.Imaging.ImageFormat.Png;
-            case ".bmp":
-                return System.Drawing.Imaging.ImageFormat.Bmp;
-            case ".gif":
-                return System.Drawing.Imaging.ImageFormat.Gif;
-            case ".tif":
-            case ".tiff":
-                return System.Drawing.Imaging.ImageFormat.Tiff;
-            default:
-                return System.Drawing.Imaging.ImageFormat.Png; // Default to PNG
+            result += char.ToUpper(words[i][0]) + words[i].Substring(1).ToLower();
         }
+        
+        return result;
+    }
+    
+    // Helper method to convert a string to snake_case
+    private string ConvertToSnakeCase(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+            
+        // Replace spaces, hyphens with underscores
+        string result = input.Replace(' ', '_').Replace('-', '_');
+        
+        // Handle camelCase or PascalCase
+        result = Regex.Replace(result, "([a-z])([A-Z])", "$1_$2");
+        
+        return result.ToLower();
     }
 
-    private void CheckPdfiumDependencies()
+    // Update page navigation display
+    private void UpdatePageNavigationInfo()
     {
-        // Run the check on a background thread to avoid blocking the UI
-        Task.Run(() => 
+        TxtPageInfo.Text = $"Page {_currentPdfPage} of {_totalPdfPages}";
+        
+        // Enable/disable navigation buttons
+        BtnPrevPage.IsEnabled = _currentPdfPage > 1;
+        BtnNextPage.IsEnabled = _currentPdfPage < _totalPdfPages;
+    }
+    
+    // Handle Previous Page button click
+    private void BtnPrevPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPdfPage > 1)
         {
-            try
+            _currentPdfPage--;
+            LoadPageData(_currentPdfPage);
+            UpdatePageNavigationInfo();
+        }
+    }
+    
+    // Handle Next Page button click
+    private void BtnNextPage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPdfPage < _totalPdfPages)
+        {
+            _currentPdfPage++;
+            LoadPageData(_currentPdfPage);
+            UpdatePageNavigationInfo();
+        }
+    }
+    
+    // Load data for a specific page
+    private void LoadPageData(int pageNum)
+    {
+        // Check if we already have the result in memory
+        if (_pdfPageResults.ContainsKey(pageNum))
+        {
+            TxtExtractionResults.Text = _pdfPageResults[pageNum];
+                return;
+            }
+            
+        // Otherwise, try to load from file
+        try
+        {
+            string jsonFilePath = Path.Combine(_processingFolder, $"{_pdfBaseName}_page{pageNum}_data.json");
+            if (File.Exists(jsonFilePath))
             {
-                bool dependenciesAvailable = PdfiumDependencyChecker.AreDependenciesAvailable();
-                
-                // If dependencies are missing, show a notification in the UI thread
-                if (!dependenciesAvailable)
-                {
-                    Dispatcher.Invoke(() => 
-                    {
-                        // Show a non-blocking notification to the user
-                        MessageBox.Show(
-                            "PDF to image conversion requires PdfiumViewer native dependencies, which appear to be missing.\n\n" +
-                            "To install the required dependencies, please click on the 'Install PDF Dependencies' menu option in the top-right corner.",
-                            "Missing Dependencies",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Information);
-                    });
+                string jsonContent = File.ReadAllText(jsonFilePath);
+                _pdfPageResults[pageNum] = jsonContent;
+                TxtExtractionResults.Text = jsonContent;
+            }
+            else
+            {
+                TxtExtractionResults.Text = $"Data for page {pageNum} is not available.";
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Ignore any errors in the dependency check
-            }
-        });
-    }
-
-    // Helper method to get color depth from a PixelFormat
-    private int GetPixelFormatDepth(System.Drawing.Imaging.PixelFormat format)
-    {
-        switch (format)
-        {
-            case System.Drawing.Imaging.PixelFormat.Format1bppIndexed:
-                return 1;
-            case System.Drawing.Imaging.PixelFormat.Format4bppIndexed:
-                return 4;
-            case System.Drawing.Imaging.PixelFormat.Format8bppIndexed:
-                return 8;
-            case System.Drawing.Imaging.PixelFormat.Format16bppArgb1555:
-            case System.Drawing.Imaging.PixelFormat.Format16bppGrayScale:
-            case System.Drawing.Imaging.PixelFormat.Format16bppRgb555:
-            case System.Drawing.Imaging.PixelFormat.Format16bppRgb565:
-                return 16;
-            case System.Drawing.Imaging.PixelFormat.Format24bppRgb:
-                return 24;
-            case System.Drawing.Imaging.PixelFormat.Format32bppArgb:
-            case System.Drawing.Imaging.PixelFormat.Format32bppPArgb:
-            case System.Drawing.Imaging.PixelFormat.Format32bppRgb:
-                return 32;
-            case System.Drawing.Imaging.PixelFormat.Format48bppRgb:
-                return 48;
-            case System.Drawing.Imaging.PixelFormat.Format64bppArgb:
-            case System.Drawing.Imaging.PixelFormat.Format64bppPArgb:
-                return 64;
-            default:
-                return 0;
+            TxtExtractionResults.Text = $"Error loading page {pageNum} data: {ex.Message}";
         }
     }
 
-    // Helper method to get or create the processing folder for a file
-    private string GetProcessingFolder(string filePath)
+    // Process PDF for AI extraction - saves individual JSON files for each page
+    private async Task ProcessPdfForAIExtraction(string pdfPath, string prompt)
     {
         try
         {
-            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-                return null;
-                
-            string directory = Path.GetDirectoryName(filePath);
-            string filename = Path.GetFileNameWithoutExtension(filePath);
-            string processingFolder = Path.Combine(directory, $"{filename}_processing");
+            // Get the processing folder
+            string processingFolder = GetProcessingFolder(pdfPath);
+            string originalFileName = Path.GetFileNameWithoutExtension(pdfPath);
             
+            // Initialize PDF page navigation variables
+            _processingFolder = processingFolder;
+            _pdfBaseName = originalFileName;
+            _pdfPageResults.Clear();
+            
+            // Open the PDF file
+            using (PdfReader reader = new PdfReader(pdfPath))
+            {
+                // Get total pages 
+                _totalPdfPages = reader.NumberOfPages;
+                _currentPdfPage = 1;
+                
+                // Show PDF navigation for multi-page PDFs
+                if (_totalPdfPages > 1)
+                {
+                    PdfNavigationPanel.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    PdfNavigationPanel.Visibility = Visibility.Collapsed;
+                }
+                
+                // Process each page
+                for (int pageNum = 1; pageNum <= _totalPdfPages; pageNum++)
+                {
+                    // Show progress
+                    TxtExtractionResults.Text = $"Processing page {pageNum} of {_totalPdfPages}...";
+                    await Task.Delay(50); // Allow UI to update
+                    
+                    // Generate a temporary image file for this page
+                    string tempImagePath = Path.Combine(processingFolder, $"{originalFileName}_page{pageNum}.png");
+                    
+                    // Convert PDF page to image
+                    using (var pdfDocument = PdfiumViewer.PdfDocument.Load(pdfPath))
+                    {
+                        using (var bitmap = pdfDocument.Render(pageNum - 1, 300, 300, true))
+                        {
+                            bitmap.Save(tempImagePath, ImageFormat.Png);
+                        }
+                    }
+                    
+                    // Perform extraction on the page image
+                    string extractionResult = await _dashScopeService.PerformOcrAsync(tempImagePath, prompt);
+                    
+                    // Pre-process the result to extract only the JSON
+                    extractionResult = PreProcessExtractionResult(extractionResult);
+                    
+                    // Store the result in memory
+                    _pdfPageResults[pageNum] = extractionResult;
+                    
+                    // Clean and format the JSON
+                    try
+                    {
+                        string jsonContent = CleanJsonContent(extractionResult);
+                        
+                        try
+                        {
+                            var jsonObject = JsonConvert.DeserializeObject(jsonContent);
+                            if (jsonObject != null)
+                            {
+                                // Format with proper indentation
+                                string formattedJson = JsonConvert.SerializeObject(jsonObject, Formatting.Indented);
+                                
+                                // Update the stored result with the formatted version
+                                _pdfPageResults[pageNum] = formattedJson;
+                                
+                                // Save to file with page number in filename
+                                string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
+                                File.WriteAllText(jsonFilePath, formattedJson);
+                            }
+                        }
+                        catch (JsonException)
+                        {
+                            // If standard parsing fails, try advanced repair
+                            string repairedJson = AttemptAdvancedJsonRepair(jsonContent);
+                            
+                            try
+                            {
+                                var testObject = JsonConvert.DeserializeObject(repairedJson);
+                                if (testObject != null)
+                                {
+                                    // Successfully repaired
+                                    string formattedJson = JsonConvert.SerializeObject(testObject, Formatting.Indented);
+                                    
+                                    // Update the stored result with the repaired version
+                                    _pdfPageResults[pageNum] = formattedJson;
+                                    
+                                    // Save to file with page number in filename
+                                    string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
+                                    File.WriteAllText(jsonFilePath, formattedJson);
+                                }
+                            }
+                            catch
+                            {
+                                // Even the advanced repair failed, save the raw result
+                                string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
+                                File.WriteAllText(jsonFilePath, extractionResult);
+                            }
+                        }
+                    }
+                    catch (Exception jsonEx)
+                    {
+                        // Log but continue with next page
+                        Console.WriteLine($"Error processing JSON for page {pageNum}: {jsonEx.Message}");
+                    }
+                    
+                    // Clean up the temporary image file
+                    try
+                    {
+                        if (File.Exists(tempImagePath))
+                        {
+                            File.Delete(tempImagePath);
+                        }
+                    }
+                    catch 
+                    {
+                        // Ignore cleanup errors
+                    }
+                }
+            }
+            
+            // Display the results of the current page
+            UpdatePageNavigationInfo();
+            if (_pdfPageResults.ContainsKey(_currentPdfPage))
+            {
+                TxtExtractionResults.Text = _pdfPageResults[_currentPdfPage];
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"Error processing PDF: {ex.Message}", ex);
+        }
+    }
+    
+    // Helper method to get the processing folder
+    private string GetProcessingFolder(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            return null;
+        
+        try
+        {
+            // Get the directory where the file is located
+            string parentDirectory = Path.GetDirectoryName(filePath);
+            string fileName = Path.GetFileNameWithoutExtension(filePath);
+            
+            // Create a processing folder next to the file
+            string processingFolder = Path.Combine(parentDirectory, $"{fileName}_processing");
+            
+            // Create the folder if it doesn't exist
             if (!Directory.Exists(processingFolder))
             {
                 Directory.CreateDirectory(processingFolder);
@@ -2397,8 +1956,485 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error creating processing folder: {ex.Message}", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Console.WriteLine($"Error creating processing folder: {ex.Message}");
             return null;
+        }
+    }
+    
+    // Helper method to compute a hash for a file
+    private string ComputeFileHash(string filePath)
+    {
+        try
+        {
+            using (var md5 = MD5.Create())
+            {
+                using (var stream = File.OpenRead(filePath))
+                {
+                    byte[] hash = md5.ComputeHash(stream);
+                    return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+                }
+            }
+        }
+        catch
+        {
+            // Fallback to a simpler approach if hashing fails
+            return Path.GetFileNameWithoutExtension(filePath) + "_" + 
+                   new FileInfo(filePath).Length.ToString();
+        }
+    }
+    
+    // Helper to format file size in human-readable format
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+    
+    // Helper method to get pixel format depth
+    private int GetPixelFormatDepth(PixelFormat format)
+    {
+        switch (format)
+        {
+            case PixelFormat.Format1bppIndexed:
+                return 1;
+            case PixelFormat.Format4bppIndexed:
+                return 4;
+            case PixelFormat.Format8bppIndexed:
+                return 8;
+            case PixelFormat.Format16bppGrayScale:
+            case PixelFormat.Format16bppRgb555:
+            case PixelFormat.Format16bppRgb565:
+            case PixelFormat.Format16bppArgb1555:
+                return 16;
+            case PixelFormat.Format24bppRgb:
+                return 24;
+            case PixelFormat.Format32bppRgb:
+            case PixelFormat.Format32bppArgb:
+            case PixelFormat.Format32bppPArgb:
+                return 32;
+            case PixelFormat.Format48bppRgb:
+                return 48;
+            case PixelFormat.Format64bppArgb:
+            case PixelFormat.Format64bppPArgb:
+                return 64;
+            default:
+                return 0;
+        }
+    }
+
+    // Helper method to clean JSON content
+    private string CleanJsonContent(string jsonText)
+    {
+        if (string.IsNullOrEmpty(jsonText))
+            return "{}";
+            
+        // Remove common markdown formatting
+        string cleaned = jsonText;
+        
+        // Remove codeblocks
+        cleaned = Regex.Replace(cleaned, @"```(?:json)?([^`]+)```", "$1", RegexOptions.Singleline);
+        
+        // Remove any random text before the first { or after the last }
+        int firstBrace = cleaned.IndexOf('{');
+        int lastBrace = cleaned.LastIndexOf('}');
+        
+        if (firstBrace >= 0 && lastBrace > firstBrace)
+        {
+            cleaned = cleaned.Substring(firstBrace, lastBrace - firstBrace + 1);
+        }
+        
+        return cleaned;
+    }
+    
+    // Helper method to pre-process extraction result to extract the JSON
+    private string PreProcessExtractionResult(string result)
+    {
+        if (string.IsNullOrEmpty(result))
+            return "{}";
+            
+        // Extract JSON from markdown code blocks if present
+        Match jsonMatch = Regex.Match(result, @"```(?:json)?([^`]+)```", RegexOptions.Singleline);
+        if (jsonMatch.Success)
+        {
+            return jsonMatch.Groups[1].Value.Trim();
+        }
+        
+        // If not in code blocks, try to extract JSON using braces
+        int firstBrace = result.IndexOf('{');
+        int lastBrace = result.LastIndexOf('}');
+        
+        if (firstBrace >= 0 && lastBrace > firstBrace)
+        {
+            return result.Substring(firstBrace, lastBrace - firstBrace + 1);
+        }
+        
+        // Return the original if no json-like structure found
+        return result;
+    }
+    
+    // Helper method to show data validation panel
+    private void ShowDataValidationPanel(object jsonData, string documentType)
+    {
+        try
+        {
+            // Clear existing fields
+            ValidationFieldsPanel.Children.Clear();
+            
+            // Convert to JObject
+            JObject dataObject;
+            
+            if (jsonData is JObject obj)
+            {
+                dataObject = obj;
+            }
+            else
+            {
+                string jsonString = jsonData.ToString();
+                dataObject = JObject.Parse(jsonString);
+            }
+            
+            // Add fields based on document type
+        switch (documentType)
+        {
+            case "Invoice":
+                    AddValidationFields(dataObject, new string[] {
+                        "company_name", "invoice_number", "purchase_order_number", 
+                        "document_date", "due_date", "total_amount"
+                    });
+                break;
+                
+            case "Receipt":
+                    AddValidationFields(dataObject, new string[] {
+                        "merchant_name", "receipt_number", "date", 
+                        "total_amount", "payment_method"
+                    });
+                break;
+                
+                case "Business Card":
+                    AddValidationFields(dataObject, new string[] {
+                        "company_name", "full_name", "title", 
+                        "email_address", "phone_number", "address"
+                    });
+                break;
+                
+                case "Purchase Order":
+                    AddValidationFields(dataObject, new string[] {
+                        "po_number", "order_date", "vendor_name", 
+                        "ship_to_address", "total_amount"
+                    });
+                break;
+                
+                case "Delivery Order":
+                    AddValidationFields(dataObject, new string[] {
+                        "do_number", "delivery_date", "customer_name", 
+                        "ship_to_address", "order_reference"
+                    });
+                break;
+                
+            default:
+                    // For general/custom documents, create fields based on all properties
+                    AddValidationFieldsFromJObject(dataObject);
+                break;
+        }
+    }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error setting up validation panel: {ex.Message}", 
+                "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+    
+    // Helper method to add validation fields based on a list of field names
+    private void AddValidationFields(JObject data, string[] fieldNames)
+    {
+        foreach (string fieldName in fieldNames)
+        {
+            // Create field label
+            var fieldLabel = new TextBlock
+            {
+                Text = fieldName.Replace("_", " ").ToUpper(),
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 10, 0, 2)
+            };
+            
+            ValidationFieldsPanel.Children.Add(fieldLabel);
+            
+            // Create field value text box
+            var fieldValue = new TextBox
+            {
+                Text = data[fieldName]?.ToString() ?? "",
+                Padding = new Thickness(8, 5, 8, 5),
+                Margin = new Thickness(0, 0, 0, 10),
+                Tag = fieldName // Store the field name for later reference
+            };
+            
+            ValidationFieldsPanel.Children.Add(fieldValue);
+        }
+    }
+    
+    // Helper method to dynamically add validation fields based on JObject properties
+    private void AddValidationFieldsFromJObject(JObject data)
+    {
+        foreach (var property in data.Properties())
+        {
+            // Create field label
+            var fieldLabel = new TextBlock
+            {
+                Text = property.Name.Replace("_", " ").ToUpper(),
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 10, 0, 2)
+            };
+            
+            ValidationFieldsPanel.Children.Add(fieldLabel);
+            
+            // Create field value text box
+            var fieldValue = new TextBox
+            {
+                Text = property.Value?.ToString() ?? "",
+                Padding = new Thickness(8, 5, 8, 5),
+                Margin = new Thickness(0, 0, 0, 10),
+                Tag = property.Name // Store the field name for later reference
+            };
+            
+            ValidationFieldsPanel.Children.Add(fieldValue);
+        }
+    }
+
+    private void CheckPdfiumDependencies()
+    {
+        try
+        {
+            // Test loading a minimal PDF document to verify PDFium is installed
+            using (var stream = new MemoryStream())
+            {
+                // Create minimal valid PDF
+                var bytes = Encoding.ASCII.GetBytes("%PDF-1.4\n%âãÏÓ\n1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n2 0 obj\n<</Type/Pages/Kids[]/Count 0>>\nendobj\nxref\n0 3\n0000000000 65535 f\n0000000015 00000 n\n0000000060 00000 n\ntrailer\n<</Size 3/Root 1 0 R>>\nstartxref\n110\n%%EOF\n");
+                stream.Write(bytes, 0, bytes.Length);
+                stream.Position = 0;
+
+                // Try to load the PDF with PdfiumViewer
+                using (var pdfDocument = PdfiumViewer.PdfDocument.Load(stream))
+                {
+                    // If it loads successfully, PDFium is properly installed
+                }
+            }
+        }
+        catch (DllNotFoundException)
+        {
+            MessageBox.Show(
+                "PDF processing libraries are missing. Please reinstall the application or contact support.",
+                "Missing Dependencies",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        catch (Exception ex)
+        {
+            // Other errors can be logged but may not require user notification
+            Console.WriteLine($"Error checking PDF dependencies: {ex.Message}");
+        }
+    }
+
+    // PDF operations button handlers
+    private void BtnConvertToImage_Click(object sender, RoutedEventArgs e)
+    {
+        // Stub implementation - to be implemented later
+        MessageBox.Show("Convert to Image functionality will be implemented in a future update.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BtnSetPassword_Click(object sender, RoutedEventArgs e)
+    {
+        // Stub implementation - to be implemented later
+        MessageBox.Show("Set Password functionality will be implemented in a future update.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BtnRemovePassword_Click(object sender, RoutedEventArgs e)
+    {
+        // Stub implementation - to be implemented later
+        MessageBox.Show("Remove Password functionality will be implemented in a future update.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BtnSignPdf_Click(object sender, RoutedEventArgs e)
+    {
+        // Stub implementation - to be implemented later
+        MessageBox.Show("Sign PDF functionality will be implemented in a future update.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    // Image operations button handlers
+    private void BtnConvertToPdf_Click(object sender, RoutedEventArgs e)
+    {
+        // Stub implementation - to be implemented later
+        MessageBox.Show("Convert to PDF functionality will be implemented in a future update.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BtnIncreaseDpi_Click(object sender, RoutedEventArgs e)
+    {
+        // Stub implementation - to be implemented later
+        MessageBox.Show("Increase DPI functionality will be implemented in a future update.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BtnCropImage_Click(object sender, RoutedEventArgs e)
+    {
+        // Stub implementation - to be implemented later
+        MessageBox.Show("Crop Image functionality will be implemented in a future update.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    // Extraction panel button handlers
+    private void BtnCopyResults_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(TxtExtractionResults?.Text))
+    {
+        try
+        {
+                Clipboard.SetText(TxtExtractionResults.Text);
+                MessageBox.Show("Results copied to clipboard.", "Copy Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+                MessageBox.Show($"Error copying to clipboard: {ex.Message}", "Copy Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void BtnValidateData_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // Parse the JSON from the extraction results
+            if (!string.IsNullOrEmpty(TxtExtractionResults?.Text))
+            {
+                var jsonObject = JsonConvert.DeserializeObject<JObject>(TxtExtractionResults.Text);
+                if (jsonObject != null)
+                {
+                    // Get the selected document type
+                    ComboBoxItem selectedItem = (ComboBoxItem)CmbDocumentType?.SelectedItem;
+                    string documentType = selectedItem?.Content.ToString() ?? "General";
+                    
+                    // Show the validation panel
+                    ShowDataValidationPanel(jsonObject, documentType);
+                    
+                    // Show the validation panel
+                    _isDataValidationPanelVisible = true;
+                    UpdateDataValidationPanelVisibility();
+                            }
+                            else
+                            {
+                    MessageBox.Show("Failed to parse JSON data. Please check the format of the extracted data.", 
+                        "Invalid JSON", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                    }
+                    else
+                    {
+                MessageBox.Show("No extraction data to validate. Please extract data first.", 
+                    "No Data", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error validating data: {ex.Message}", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Validation panel button handlers
+    private void BtnToggleValidation_Click(object sender, RoutedEventArgs e)
+    {
+        // Hide validation panel
+        _isDataValidationPanelVisible = false;
+        UpdateDataValidationPanelVisibility();
+    }
+    
+    private void BtnUpdateValidation_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // First, build a new JSON object from the validation fields
+            JObject updatedData = new JObject();
+            
+            // Iterate through all TextBox controls in the ValidationFieldsPanel
+            foreach (var child in ValidationFieldsPanel.Children)
+            {
+                if (child is TextBox textBox && textBox.Tag != null)
+                {
+                    string fieldName = textBox.Tag.ToString();
+                    string fieldValue = textBox.Text;
+                    
+                    // Add the field to the updated JSON object
+                    updatedData[fieldName] = fieldValue;
+                }
+            }
+            
+            // Format the JSON for display
+            string jsonText = JsonConvert.SerializeObject(updatedData, Formatting.Indented);
+            
+            // Update the extraction results text box
+            TxtExtractionResults.Text = jsonText;
+            
+            MessageBox.Show("JSON data has been updated with your changes.", "Update Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error updating JSON: {ex.Message}", "Update Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void BtnSaveValidation_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_currentFilePath))
+            {
+                MessageBox.Show("No document is currently loaded.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            
+            // Get the processing folder
+            string processingFolder = GetProcessingFolder(_currentFilePath);
+            if (processingFolder == null)
+            {
+                MessageBox.Show("Could not create processing folder. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // Get current JSON from extraction results
+            string jsonContent = TxtExtractionResults.Text;
+            if (string.IsNullOrEmpty(jsonContent))
+            {
+                MessageBox.Show("No data to save. Please extract data first.", "No Data", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+            
+            // Define the file name based on whether this is a PDF page or a single image
+            string originalFileName = Path.GetFileNameWithoutExtension(_currentFilePath);
+            string jsonFilePath;
+            
+            if (_isPdf && _totalPdfPages > 1)
+            {
+                // For multi-page PDFs, we save page-specific JSON files
+                jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_page{_currentPdfPage}_data.json");
+                
+                // Update the in-memory collection with the current content
+                _pdfPageResults[_currentPdfPage] = jsonContent;
+            }
+            else
+            {
+                // For single image or single-page PDF
+                jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_data.json");
+            }
+            
+            // Save the JSON to file
+            File.WriteAllText(jsonFilePath, jsonContent);
+            
+            MessageBox.Show($"Validated data has been saved to:\n{jsonFilePath}", "Save Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error saving validated data: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

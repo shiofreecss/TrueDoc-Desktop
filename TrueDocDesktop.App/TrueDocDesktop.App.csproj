@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\app_icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +32,13 @@
     <None Update="InstallPdfiumDependencies.ps1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <!-- Include Assets -->
+  <ItemGroup>
+    <Resource Include="Assets\**\*.*" />
+    <None Remove="Assets\app_icon.ico" />
+    <Resource Include="Assets\app_icon.ico" />
   </ItemGroup>
 
 </Project>

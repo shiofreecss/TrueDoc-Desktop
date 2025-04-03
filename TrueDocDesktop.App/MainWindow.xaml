@@ -6,7 +6,8 @@
         xmlns:local="clr-namespace:TrueDocDesktop.App"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
-        Title="TrueDoc Desktop" Height="700" Width="1200" WindowStartupLocation="CenterScreen">
+        Icon="Assets/app_icon.ico"
+        Title="TrueDoc Desktop" Height="900" Width="1400" WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <Style x:Key="ButtonStyle" TargetType="Button">
             <Setter Property="Margin" Value="0,5,0,5"/>
@@ -112,6 +113,8 @@
             <ColumnDefinition Width="1*"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="1*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="1*"/>
         </Grid.ColumnDefinitions>
 
         <!-- Left side - Document Preview -->
@@ -127,7 +130,7 @@
             <Border Grid.Row="1" x:Name="PreviewBorder" Style="{StaticResource DropTargetStyle}" BorderThickness="1" BorderBrush="#DDDDDD" Margin="10" Background="White" AllowDrop="True">
                 <Grid x:Name="PreviewContainer" AllowDrop="True">
                     <!-- WebView2 for PDF preview -->
-                    <wv2:WebView2 x:Name="PdfViewer" Visibility="Collapsed" AllowDrop="True"/>
+                    <wv2:WebView2 x:Name="PdfViewer" Visibility="Collapsed" AllowDrop="True" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
                     
                     <!-- Image preview -->
                     <Image x:Name="ImageViewer" Stretch="Uniform" Visibility="Collapsed" AllowDrop="True"/>
@@ -168,14 +171,15 @@
                     <!-- Document Upload Section -->
                     <GroupBox Header="Upload Document" Padding="10" Margin="0,0,0,15">
                         <StackPanel>
-                            <Button x:Name="BtnUploadPdf" Content="Upload PDF" Style="{StaticResource ButtonStyle}" Click="BtnUploadPdf_Click"/>
                             <Button x:Name="BtnUploadImage" Content="Upload Image" Style="{StaticResource ButtonStyle}" Click="BtnUploadImage_Click"/>
+                            <Button x:Name="BtnUploadPdf" Content="Upload PDF" Style="{StaticResource ButtonStyle}" Click="BtnUploadPdf_Click"/>
                         </StackPanel>
                     </GroupBox>
                     
                     <!-- PDF Operations Section -->
                     <GroupBox x:Name="PdfOperationsGroup" Header="PDF Operations" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
                         <StackPanel>
+                            <Button x:Name="BtnPdfExtract" Content="Extract Data with AI" Style="{StaticResource ButtonStyle}" Click="BtnOcr_Click" IsEnabled="False"/>
                             <Button x:Name="BtnConvertToImage" Content="Convert to Image" Style="{StaticResource ButtonStyle}" Click="BtnConvertToImage_Click" IsEnabled="False"/>
                             <Button x:Name="BtnSetPassword" Content="Set Password" Style="{StaticResource ButtonStyle}" Click="BtnSetPassword_Click" IsEnabled="False"/>
                             <Button x:Name="BtnRemovePassword" Content="Remove Password" Style="{StaticResource ButtonStyle}" Click="BtnRemovePassword_Click" IsEnabled="False"/>
@@ -186,6 +190,7 @@
                     <!-- Image Operations Section -->
                     <GroupBox x:Name="ImageOperationsGroup" Header="Image Operations" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
                         <StackPanel>
+                            <Button x:Name="BtnImageExtract" Content="Extract Data with AI" Style="{StaticResource ButtonStyle}" Click="BtnOcr_Click" IsEnabled="False"/>
                             <Button x:Name="BtnConvertToPdf" Content="Convert to PDF" Style="{StaticResource ButtonStyle}" Click="BtnConvertToPdf_Click" IsEnabled="False"/>
                             <Button x:Name="BtnIncreaseDpi" Content="Increase DPI" Style="{StaticResource ButtonStyle}" Click="BtnIncreaseDpi_Click" IsEnabled="False"/>
                             <Button x:Name="BtnCropImage" Content="Crop Image" Style="{StaticResource ButtonStyle}" Click="BtnCropImage_Click" IsEnabled="False"/>
@@ -197,7 +202,6 @@
                         <StackPanel>
                             <Button x:Name="BtnSaveAs" Content="Save As..." Style="{StaticResource ButtonStyle}" Click="BtnSaveAs_Click" IsEnabled="False"/>
                             <Button x:Name="BtnPrint" Content="Print" Style="{StaticResource ButtonStyle}" Click="BtnPrint_Click" IsEnabled="False"/>
-                            <Button x:Name="BtnOcr" Content="Extract Data with AI" Style="{StaticResource ButtonStyle}" Click="BtnOcr_Click" IsEnabled="False"/>
                         </StackPanel>
                     </GroupBox>
                     
@@ -288,44 +292,127 @@
                     <!-- AI Extraction Options -->
                     <GroupBox Header="Extraction Settings" Padding="10" Margin="0,0,0,10">
                         <StackPanel>
+                            <TextBlock Text="Note: For PDF files, each page will be automatically processed separately." 
+                                       TextWrapping="Wrap" Margin="0,0,0,10" FontStyle="Italic"/>
                             <CheckBox x:Name="ChkIncludeHandwritten" Content="Include handwritten content" IsChecked="True" Margin="0,5,0,5"/>
                             <CheckBox x:Name="ChkFormatDates" Content="Format dates (DD/MM/YYYY)" IsChecked="True" Margin="0,5,0,5"/>
                         </StackPanel>
                     </GroupBox>
 
                     <!-- Extraction Results -->
-                    <GroupBox Header="Results" Padding="10" Margin="0,0,0,10">
+                    <GroupBox Header="Extraction Results" Padding="10" Margin="0,0,0,10">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             
-                            <TextBox x:Name="TxtExtractionResults" 
-                                     Grid.Row="0"
+                            <TextBox Grid.Row="0" x:Name="TxtExtractionResults" 
                                      TextWrapping="Wrap" 
                                      AcceptsReturn="True" 
                                      VerticalScrollBarVisibility="Auto"
-                                     Height="120"
+                                     Height="350"
                                      IsReadOnly="True"
+                                     FontFamily="Consolas" 
+                                     FontSize="12" 
                                      Background="#FAFAFA"
                                      Padding="8"/>
                             
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                                <Button x:Name="BtnCopyResults" Content="Copy" Padding="12,5" Margin="0,0,5,0" Click="BtnCopyResults_Click"/>
-                                <Button x:Name="BtnSaveResults" Content="Save JSON" Padding="12,5" Click="BtnSaveResults_Click"/>
-                            </StackPanel>
+                            <Grid Grid.Row="1">
+                                <StackPanel Orientation="Vertical" HorizontalAlignment="Center" Margin="0,10,0,0">
+                                    <Button x:Name="BtnExtractData" Content="Extract Data" 
+                                            Click="BtnExtractData_Click" 
+                                            Style="{StaticResource ButtonStyle}" 
+                                            Margin="0,0,0,5" 
+                                            HorizontalAlignment="Stretch"
+                                            Width="150"/>
+                                    
+                                    <!-- PDF Page Navigation Controls -->
+                                    <StackPanel x:Name="PdfNavigationPanel" Orientation="Horizontal" HorizontalAlignment="Center" 
+                                              Margin="0,0,0,5" Visibility="Collapsed">
+                                        <Button x:Name="BtnPrevPage" Content="◀ Previous" 
+                                                Click="BtnPrevPage_Click"
+                                                Style="{StaticResource ButtonStyle}" 
+                                                Width="75" Margin="0,0,5,0"/>
+                                        <TextBlock x:Name="TxtPageInfo" Text="Page 1 of 1" 
+                                                   VerticalAlignment="Center" 
+                                                   HorizontalAlignment="Center" 
+                                                   Margin="5,0"
+                                                   FontWeight="SemiBold"/>
+                                        <Button x:Name="BtnNextPage" Content="Next ▶" 
+                                                Click="BtnNextPage_Click"
+                                                Style="{StaticResource ButtonStyle}" 
+                                                Width="75" Margin="5,0,0,0"/>
+                                    </StackPanel>
+                                    
+                                    <Button x:Name="BtnCopyResults" Content="Copy Results" 
+                                            Click="BtnCopyResults_Click" 
+                                            Style="{StaticResource ButtonStyle}" 
+                                            Margin="0,0,0,5"
+                                            HorizontalAlignment="Stretch"
+                                            Width="150"/>
+                                            
+                                    <Button x:Name="BtnValidateData" Content="Validate Data" 
+                                            Click="BtnValidateData_Click" 
+                                            Style="{StaticResource ButtonStyle}"
+                                            HorizontalAlignment="Stretch"
+                                            Width="150"/>
+                                            
+                                    <!-- Hide Test Validation button in production -->
+                                    <Button x:Name="BtnTestValidation" Content="Test Validation" 
+                                            Click="BtnTestValidation_Click" 
+                                            Style="{StaticResource ButtonStyle}" 
+                                            Margin="0,10,0,0" 
+                                            HorizontalAlignment="Stretch"
+                                            Width="150"
+                                            Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Grid>
                         </Grid>
                     </GroupBox>
                 </StackPanel>
             </ScrollViewer>
+        </Grid>
+        
+        <!-- Splitter between Extract Panel and Data Validation Panel -->
+        <GridSplitter Grid.Column="5" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="#DDDDDD"/>
+        
+        <!-- Data Validation Panel -->
+        <Grid Grid.Column="6" Background="#F5F5F5" x:Name="DataValidationPanel" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-            <Button x:Name="BtnExtractData" 
-                    Grid.Row="2" 
-                    Content="Extract Data" 
-                    Style="{StaticResource ButtonStyle}"
-                    Margin="10" 
-                    Click="BtnExtractData_Click"/>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Data Validation" FontSize="18" FontWeight="SemiBold" Margin="10"/>
+                <Button x:Name="BtnToggleValidation" Grid.Column="1" Margin="0,5,0,5" Padding="2,10" Click="BtnToggleValidation_Click" Style="{StaticResource VerticalToggleButtonStyle}">
+                    <TextBlock Text="&gt;&#10;&gt;" TextAlignment="Center"/>
+                </Button>
+            </Grid>
+            
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="10,0,10,0" x:Name="ValidationFieldsPanel">
+                    <!-- Fields will be dynamically generated here -->
+                </StackPanel>
+            </ScrollViewer>
+            
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="10">
+                <Button x:Name="BtnUpdateValidation" Content="Update JSON" 
+                        Click="BtnUpdateValidation_Click" 
+                        Style="{StaticResource ButtonStyle}" 
+                        Margin="0,0,5,0"
+                        Width="100"/>
+                <Button x:Name="BtnSaveValidation" Content="Save JSON" 
+                        Click="BtnSaveValidation_Click" 
+                        Style="{StaticResource ButtonStyle}"
+                        Width="100"/>
+            </StackPanel>
         </Grid>
         
         <!-- Floating buttons for panels when they are hidden -->
@@ -337,6 +424,10 @@
             <!-- Show Extraction panel button -->
             <Button x:Name="BtnShowExtract" Padding="2,10" Margin="0,5,0,0" Click="BtnOcr_Click" Visibility="Collapsed" Style="{StaticResource VerticalTabButtonStyle}">
                 <TextBlock Text="E&#10;x&#10;t&#10;r&#10;a&#10;c&#10;t" TextAlignment="Center"/>
+            </Button>
+            <!-- Show Validation panel button -->
+            <Button x:Name="BtnShowValidation" Padding="2,10" Margin="0,5,0,0" Click="BtnShowValidation_Click" Visibility="Collapsed" Style="{StaticResource VerticalTabButtonStyle}">
+                <TextBlock Text="V&#10;a&#10;l&#10;i&#10;d&#10;a&#10;t&#10;e" TextAlignment="Center"/>
             </Button>
         </StackPanel>
     </Grid>
