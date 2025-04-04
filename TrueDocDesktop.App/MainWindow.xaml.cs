@@ -50,16 +50,7 @@ public partial class MainWindow : Window
     // Dictionary of document type prompts
     private readonly Dictionary<string, string> PROMPTS = new Dictionary<string, string>
     {
-        {"Business Card", "I have this image and it contains one or multiple business cards, can you help me to extract the information from this image into the JSON format as: {\"0\": <bizcard_json_1>,\"1\": <bizcard_json_2> ..., \"n\": <bizcard_json_n>}. In child JSON like <bizcard_json_1> will follow this format {\"company_name\": \"\", \"full_name\": \"\", \"title\": \"\", \"email_address\": \"\", \"phone_number\": \"\", \"tel_number\": \"\", \"fax_number\": \"\", \"website\": \"\", \"address\": \"\", \"handwritting_content\": \"\"}"},
-        {"Receipt", "Give me JSON as this format: {\"receipt_number\": \"\", \"document_date\": \"\", \"store_name\": \"\", \"store_address\": \"\", \"phone_number\": \"\", \"fax_number\": \"\", \"email\": \"\", \"website\": \"\", \"gst_id\": \"\", \"pax_number\": \"\", \"table_number\": \"\", \"cashier_name\": \"\", \"item_no_of_receipt_items\": [], \"item_code_of_receipt_items\": [], \"names_of_receipt_items\": [], \"quantities_of_receipt_items\": [], \"unit_prices_of_receipt_items\": [], \"gross_worth_of_receipt_items\": [], \"subtotal\": \"\", \"rounding_amount\": \"\", \"paid_amount\": \"\", \"change_amount\": \"\", \"service_charge_percent\": \"\", \"service_charge\": \"\", \"currency\": \"\", \"tax_percent\": \"\", \"tax_total\": \"\", \"total\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string, Remove Line Break special character"},
-        {"Purchase Order", "Give me JSON as this format: {\"company_name\": \"\", \"purchase_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
-        {"Invoice", "Give me JSON as this format: {\"company_name\": \"\", \"invoice_number\": \"\", \"purchase_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
-        {"Delivery Order", "Give me JSON as this format: {\"company_name\": \"\", \"invoice_number\": \"\", \"purchase_order_number\": \"\", \"delivery_order_number\": \"\", \"document_date\": \"\", \"client_name\": \"\", \"client_address\": \"\", \"sale_order_number\": \"\", \"client_tax_id\": \"\", \"seller_name\": \"\", \"seller_address\": \"\", \"seller_tax_id\": \"\", \"iban\": \"\", \"item_no_of_invoice_items\": [], \"names_of_invoice_items\": [], \"quantities_of_invoice_items\": [], \"unit_prices_of_invoice_items\": [], \"gross_worth_of_invoice_items\": [], \"total_net_worth\": \"\", \"tax_amount\": \"\", \"tax_percent\": \"\", \"total_gross_worth\": \"\", \"handwritting_content\": \"\"}. Note: Convert document_date to DD/MM/YYYY, Currency in Singapore Standard, All data value in string format, Remove Line Break special character"},
-        {"Bankstatement", "Please extract all information as JSON"},
-        {"General", "Please extract all information as JSON"},
-        {"POSBBankStatement", "Please extract all information as JSON. All data value in string format"},
-        {"OCBCBankStatement", "Please extract all information as JSON. Note: 1) Transactions item follow this format {\"date\": \"\", \"description\": \"\", \"cheque\": \"\", \"withdrawal\": \"\", \"deposit\": \"\", \"balance\": \"\"}. 2) All data value in string format"},
-        {"TextDocument", "Extract the full text content from this document and return it in the following JSON format: {\"full_text\": \"Document content\"}"}
+        {"General", "Please extract all information as JSON"}
     };
 
     public MainWindow()
@@ -1347,144 +1338,26 @@ public partial class MainWindow : Window
     {
         string jsonContent = "";
         
-        switch (documentType)
-        {
-            case "Invoice":
-                jsonContent = @"{
-  ""company_name"": ""Cass Europe b.v."",
-  ""invoice_number"": ""CEINV-000000501"",
-  ""purchase_order_number"": ""PO400915054999"",
-  ""document_date"": ""12/12/2019"",
-  ""client_name"": ""ABC ASIA PTE LTD"",
-  ""client_address"": ""1 KALLANG AVENUE\nLEVEL 1\n123456 SINGAPORE SG"",
-  ""sale_order_number"": """",
-  ""client_tax_id"": ""M90361999A"",
-  ""seller_name"": """",
-  ""seller_address"": ""Graaf Engelbertlaan 75"",
-  ""seller_tax_id"": """",
-  ""iban"": """",
-  ""item_no_of_invoice_items"": [""22"", ""2.075"", ""2.178"", ""1""],
-  ""names_of_invoice_items"": [""PARCEL PACKAGE FEES"", ""Freight Billing File With Resolution"", ""IMACHING - EDI"", ""MONTHLY FEE""],
-  ""quantities_of_invoice_items"": [""22"", ""2.075"", ""2.178"", ""1""],
-  ""unit_prices_of_invoice_items"": [""€0,06"", ""€0,55"", ""€0,10"", ""€285,00""],
-  ""gross_worth_of_invoice_items"": [""€1,32"", ""€1.141,25"", ""€217,80"", ""€285,00""],
-  ""total_net_worth"": ""€1.645,37"",
-  ""tax_amount"": ""€0,00"",
-  ""tax_percent"": """",
-  ""total_gross_worth"": ""€1.645,37"",
-  ""handwritting_content"": """"
+        // Only supporting General type now
+        jsonContent = @"{
+  ""extracted_text"": ""This is a sample document with extracted content"",
+  ""document_type"": ""General"",
+  ""page_count"": ""1"",
+  ""extraction_date"": ""03/04/2023"",
+  ""confidence_score"": ""0.95"",
+  ""elements"": [
+    {
+      ""type"": ""paragraph"",
+      ""content"": ""Sample paragraph content from the document""
+    },
+    {
+      ""type"": ""table"",
+      ""rows"": ""3"",
+      ""columns"": ""4"",
+      ""headers"": [""Column 1"", ""Column 2"", ""Column 3"", ""Column 4""]
+    }
+  ]
 }";
-                break;
-                
-            case "Receipt":
-                jsonContent = @"{
-  ""receipt_number"": ""R328794"",
-  ""document_date"": ""15/04/2023"",
-  ""store_name"": ""FAIRPRICE FINEST"",
-  ""store_address"": ""290 Orchard Rd, #B1-03/04, Singapore 238859"",
-  ""phone_number"": ""+65 6737 1516"",
-  ""fax_number"": """",
-  ""email"": """",
-  ""website"": ""www.fairprice.com.sg"",
-  ""gst_id"": ""M4-0000042-2"",
-  ""pax_number"": ""2"",
-  ""table_number"": """",
-  ""cashier_name"": ""Sophia"",
-  ""item_no_of_receipt_items"": [""1"", ""2"", ""3"", ""4"", ""5""],
-  ""item_code_of_receipt_items"": [""APL001"", ""ORG002"", ""BRD003"", ""MLK004"", ""WTR005""],
-  ""names_of_receipt_items"": [""Apple Fuji"", ""Organic Spinach"", ""Whole Grain Bread"", ""Low Fat Milk 1L"", ""Mineral Water 500ml""],
-  ""quantities_of_receipt_items"": [""4"", ""1"", ""2"", ""1"", ""6""],
-  ""unit_prices_of_receipt_items"": [""$0.80"", ""$3.50"", ""$3.95"", ""$2.95"", ""$0.80""],
-  ""gross_worth_of_receipt_items"": [""$3.20"", ""$3.50"", ""$7.90"", ""$2.95"", ""$4.80""],
-  ""subtotal"": ""$22.35"",
-  ""rounding_amount"": ""$0.00"",
-  ""paid_amount"": ""$25.00"",
-  ""change_amount"": ""$2.65"",
-  ""service_charge_percent"": """",
-  ""service_charge"": """",
-  ""currency"": ""SGD"",
-  ""tax_percent"": ""7%"",
-  ""tax_total"": ""$1.46"",
-  ""total"": ""$23.81"",
-  ""handwritting_content"": """"
-}";
-                break;
-                
-            case "Purchase Order":
-                jsonContent = @"{
-  ""company_name"": ""JVD TECHNOLOGIES (ASIA) PTE LTD"",
-  ""purchase_order_number"": ""ASPO25000807"",
-  ""document_date"": ""03/03/2025"",
-  ""client_name"": ""MOMENTUS HOTEL ALEXANDRA"",
-  ""client_address"": ""323 Alexandra Road, Singapore 159972"",
-  ""sale_order_number"": ""LSO25-022301"",
-  ""client_tax_id"": """",
-  ""seller_name"": ""JVD TECHNOLOGIES (ASIA) PTE LTD"",
-  ""seller_address"": ""No. 56 Loyang Way #06-04 Loyang Enterprise, Singapore 508775"",
-  ""seller_tax_id"": ""199906280E"",
-  ""iban"": """",
-  ""item_no_of_invoice_items"": [""LTW-300549-UB-V2""],
-  ""names_of_invoice_items"": [""Linen trolley, H820/L1000/W700mm, steel 25mm tube, 2 solid & 2 swivel wheels, Black bag, Black""],
-  ""quantities_of_invoice_items"": [""5""],
-  ""unit_prices_of_invoice_items"": [""""],
-  ""gross_worth_of_invoice_items"": [""""],
-  ""total_net_worth"": """",
-  ""tax_amount"": """",
-  ""tax_percent"": """",
-  ""total_gross_worth"": """",
-  ""handwritting_content"": """"
-}";
-                break;
-                
-            case "Delivery Order":
-                jsonContent = @"{
-  ""company_name"": ""JVD TECHNOLOGIES (ASIA) PTE LTD"",
-  ""invoice_number"": ""INV25-0330005"",
-  ""purchase_order_number"": ""ASPO25000807"",
-  ""delivery_order_number"": ""DO25-0018234"",
-  ""document_date"": ""03/03/2025"",
-  ""client_name"": ""MOMENTUS HOTEL ALEXANDRA"",
-  ""client_address"": ""323 Alexandra Road, Singapore 159972"",
-  ""sale_order_number"": ""LSO25-022301"",
-  ""client_tax_id"": """",
-  ""seller_name"": ""JVD TECHNOLOGIES (ASIA) PTE LTD"",
-  ""seller_address"": ""No. 56 Loyang Way #06-04 Loyang Enterprise, Singapore 508775"",
-  ""seller_tax_id"": ""199906280E"",
-  ""iban"": """",
-  ""item_no_of_invoice_items"": [""LTW-300549-UB-V2""],
-  ""names_of_invoice_items"": [""Linen trolley, H820/L1000/W700mm, steel 25mm tube, 2 solid & 2 swivel wheels, Black bag, Black""],
-  ""quantities_of_invoice_items"": [""5""],
-  ""unit_prices_of_invoice_items"": [""""],
-  ""gross_worth_of_invoice_items"": [""""],
-  ""total_net_worth"": """",
-  ""tax_amount"": """",
-  ""tax_percent"": """",
-  ""total_gross_worth"": """",
-  ""handwritting_content"": """"
-}";
-                        break;
-                
-            case "Business Card":
-                jsonContent = @"{
-  ""0"": {
-    ""company_name"": ""ABC CONSULTING PTE LTD"",
-    ""full_name"": ""John Smith"",
-    ""title"": ""Senior Consultant"",
-    ""email_address"": ""john.smith@abcconsulting.com"",
-    ""phone_number"": ""+65 9123 4567"",
-    ""tel_number"": ""+65 6789 1234"",
-    ""fax_number"": ""+65 6789 1235"",
-    ""website"": ""www.abcconsulting.com"",
-    ""address"": ""1 Raffles Place, #20-01, Singapore 048616"",
-    ""handwritting_content"": """"
-  }
-}";
-                break;
-            
-            default:
-                MessageBox.Show($"No sample data available for {documentType} type.", "Sample Data", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-        }
         
         try
         {
@@ -1529,12 +1402,12 @@ public partial class MainWindow : Window
             var selectWindow = new Window
             {
                 Title = "Select Document Type",
-            Width = 300,
-            Height = 250,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner = this,
-            ResizeMode = ResizeMode.NoResize
-        };
+                Width = 300,
+                Height = 150,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize
+            };
         
             var mainPanel = new StackPanel { Margin = new Thickness(20) };
             
@@ -1547,47 +1420,15 @@ public partial class MainWindow : Window
             
             var radioButtonPanel = new StackPanel();
             
-            var rbInvoice = new RadioButton 
+            var rbGeneral = new RadioButton 
             { 
-                Content = "Invoice", 
+                Content = "General", 
                 IsChecked = true, 
                 Margin = new Thickness(0, 5, 0, 5),
                 GroupName = "DocType"
             };
             
-            var rbReceipt = new RadioButton 
-            { 
-                Content = "Receipt", 
-                Margin = new Thickness(0, 5, 0, 5),
-                GroupName = "DocType"
-            };
-            
-            var rbPO = new RadioButton 
-            { 
-                Content = "Purchase Order", 
-                Margin = new Thickness(0, 5, 0, 5),
-                GroupName = "DocType"
-            };
-            
-            var rbDO = new RadioButton 
-            { 
-                Content = "Delivery Order", 
-                Margin = new Thickness(0, 5, 0, 5),
-                GroupName = "DocType"
-            };
-            
-            var rbBC = new RadioButton 
-            { 
-                Content = "Business Card", 
-                Margin = new Thickness(0, 5, 0, 5),
-                GroupName = "DocType"
-            };
-            
-            radioButtonPanel.Children.Add(rbInvoice);
-            radioButtonPanel.Children.Add(rbReceipt);
-            radioButtonPanel.Children.Add(rbPO);
-            radioButtonPanel.Children.Add(rbDO);
-            radioButtonPanel.Children.Add(rbBC);
+            radioButtonPanel.Children.Add(rbGeneral);
             
             var buttonsPanel = new StackPanel 
             { 
@@ -1625,20 +1466,12 @@ public partial class MainWindow : Window
             // Show the window and process results
             if (selectWindow.ShowDialog() == true)
             {
-                string selectedDocType = "Invoice"; // Default
-                
-                if (rbInvoice.IsChecked == true) selectedDocType = "Invoice";
-                else if (rbReceipt.IsChecked == true) selectedDocType = "Receipt";
-                else if (rbPO.IsChecked == true) selectedDocType = "Purchase Order";
-                else if (rbDO.IsChecked == true) selectedDocType = "Delivery Order";
-                else if (rbBC.IsChecked == true) selectedDocType = "Business Card";
-                
                 // Load the selected document type for validation
-                LoadSampleJsonForValidation(selectedDocType);
-                    }
-                }
-                catch (Exception ex)
-                {
+                LoadSampleJsonForValidation("General");
+            }
+        }
+        catch (Exception ex)
+        {
             MessageBox.Show($"Error testing validation: {ex.Message}", "Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -2100,50 +1933,9 @@ public partial class MainWindow : Window
                 dataObject = JObject.Parse(jsonString);
             }
             
-            // Add fields based on document type
-        switch (documentType)
-        {
-            case "Invoice":
-                    AddValidationFields(dataObject, new string[] {
-                        "company_name", "invoice_number", "purchase_order_number", 
-                        "document_date", "due_date", "total_amount"
-                    });
-                break;
-                
-            case "Receipt":
-                    AddValidationFields(dataObject, new string[] {
-                        "merchant_name", "receipt_number", "date", 
-                        "total_amount", "payment_method"
-                    });
-                break;
-                
-                case "Business Card":
-                    AddValidationFields(dataObject, new string[] {
-                        "company_name", "full_name", "title", 
-                        "email_address", "phone_number", "address"
-                    });
-                break;
-                
-                case "Purchase Order":
-                    AddValidationFields(dataObject, new string[] {
-                        "po_number", "order_date", "vendor_name", 
-                        "ship_to_address", "total_amount"
-                    });
-                break;
-                
-                case "Delivery Order":
-                    AddValidationFields(dataObject, new string[] {
-                        "do_number", "delivery_date", "customer_name", 
-                        "ship_to_address", "order_reference"
-                    });
-                break;
-                
-            default:
-                    // For general/custom documents, create fields based on all properties
-                    AddValidationFieldsFromJObject(dataObject);
-                break;
+            // For General document type, create fields based on all properties
+            AddValidationFieldsFromJObject(dataObject);
         }
-    }
         catch (Exception ex)
         {
             MessageBox.Show($"Error setting up validation panel: {ex.Message}", 

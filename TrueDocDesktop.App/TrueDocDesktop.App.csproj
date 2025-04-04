@@ -6,7 +6,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>Assets\app_icon.ico</ApplicationIcon>
+    <ApplicationIcon>..\icon\app.ico</ApplicationIcon>
+    <!-- Assembly attributes -->
+    <AssemblyTitle>TrueDoc Desktop</AssemblyTitle>
+    <Description>Document processing and AI extraction tool</Description>
+    <Company>TrueDoc</Company>
+    <Product>TrueDocDesktop</Product>
+    <Copyright>Copyright © 2025</Copyright>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <ItemGroup>
@@ -37,8 +46,14 @@
   <!-- Include Assets -->
   <ItemGroup>
     <Resource Include="Assets\**\*.*" />
-    <None Remove="Assets\app_icon.ico" />
-    <Resource Include="Assets\app_icon.ico" />
+    <None Remove="Assets\app_icon.svg" />
+  </ItemGroup>
+
+  <!-- Include the icon file -->
+  <ItemGroup>
+    <Content Include="..\icon\app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

@@ -6,7 +6,6 @@
         xmlns:local="clr-namespace:TrueDocDesktop.App"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
-        Icon="Assets/app_icon.ico"
         Title="TrueDoc Desktop" Height="900" Width="1400" WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <Style x:Key="ButtonStyle" TargetType="Button">
@@ -276,15 +275,6 @@
                             <TextBlock Text="Select document type:" Margin="0,5,0,5"/>
                             <ComboBox x:Name="CmbDocumentType" Style="{StaticResource ComboBoxStyle}">
                                 <ComboBoxItem Content="General" IsSelected="True"/>
-                                <ComboBoxItem Content="Business Card"/>
-                                <ComboBoxItem Content="Receipt"/>
-                                <ComboBoxItem Content="Purchase Order"/>
-                                <ComboBoxItem Content="Invoice"/>
-                                <ComboBoxItem Content="Delivery Order"/>
-                                <ComboBoxItem Content="Bankstatement"/>
-                                <ComboBoxItem Content="POSBBankStatement"/>
-                                <ComboBoxItem Content="OCBCBankStatement"/>
-                                <ComboBoxItem Content="TextDocument"/>
                             </ComboBox>
                         </StackPanel>
                     </GroupBox>

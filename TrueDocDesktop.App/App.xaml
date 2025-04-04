@@ -6,8 +6,6 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- Application icon resources -->
-                <ResourceDictionary Source="Assets/AppIcon.xaml"/>
                 <!-- Add any global resources or styles here -->
             </ResourceDictionary.MergedDictionaries>
             

@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "jimp": "^1.6.0",
+    "png-to-ico": "^2.1.8",
+    "to-ico": "^1.1.5"
+  },
+  "devDependencies": {
+    "icon-gen": "^5.0.0"
+  }
+}
