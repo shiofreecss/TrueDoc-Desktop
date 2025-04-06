@@ -8,6 +8,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Windows;
 using System.Reflection;
+using System.Collections.Generic;
 
 namespace TrueDocDesktop.App.Services
 {
@@ -70,22 +71,27 @@ namespace TrueDocDesktop.App.Services
 
         private void LogDebug(string message)
         {
-            if (_debug)
+            try
             {
-                Debug.WriteLine($"[DashScope Debug] {message}");
-                // Also log to a file for later inspection
-                try
+                // Ensure the logs directory exists
+                if (!Directory.Exists(_logsDirectory))
                 {
-                    string logFileName = $"dashscope_debug_{DateTime.Now:yyyy-MM-dd}.log";
-                    string logPath = Path.Combine(_logsDirectory, logFileName);
-                    
-                    File.AppendAllText(logPath, 
-                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+                    Directory.CreateDirectory(_logsDirectory);
                 }
-                catch (Exception ex)
+                
+                // Build the log file path
+                string logFileName = $"dashscope_log_{DateTime.Now:yyyyMMdd}.txt";
+                string logPath = Path.Combine(_logsDirectory, logFileName);
+                
+                // Append to the log file
+                using (StreamWriter writer = File.AppendText(logPath))
                 {
-                    Debug.WriteLine($"[DashScope Debug] Failed to write to log file: {ex.Message}");
+                    writer.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
                 }
+            }
+            catch
+            {
+                // Silently fail if logging fails
             }
         }
 
@@ -254,6 +260,148 @@ namespace TrueDocDesktop.App.Services
             s = s.Replace("\f", "\\f");
             
             return s;
+        }
+
+        // Method to translate text to different languages
+        public async Task<string> TranslateTextAsync(string textToTranslate, string targetLanguage)
+        {
+            try
+            {
+                LogDebug($"Starting translation to {targetLanguage}");
+                
+                if (string.IsNullOrEmpty(textToTranslate))
+                {
+                    LogDebug("No text to translate");
+                    return "Error: No text to translate.";
+                }
+                
+                // Use qwen-chat as the default model for translation (text-only model)
+                string modelName = "qwen-max";
+                
+                // Create system prompt for translation
+                string systemContent = $"You are a helpful translation assistant. Translate the provided text to {targetLanguage}.";
+                
+                // Create user prompt
+                string userContent = $"Translate the following text to {targetLanguage}. Maintain the original formatting and structure.\n\n{textToTranslate}";
+                
+                // Create the request JSON
+                string jsonContent = $@"{{
+                    ""model"": ""{modelName}"",
+                    ""messages"": [
+                        {{
+                            ""role"": ""system"",
+                            ""content"": ""{EscapeJsonString(systemContent)}""
+                        }},
+                        {{
+                            ""role"": ""user"",
+                            ""content"": ""{EscapeJsonString(userContent)}""
+                        }}
+                    ]
+                }}";
+                
+                // Log a truncated version of the request for debugging
+                LogDebug($"API URL: {ApiBaseUrl}");
+                LogDebug($"Translation request content (truncated): {jsonContent.Substring(0, Math.Min(500, jsonContent.Length))}...");
+                
+                // Save the full request to a file for comparison with Postman
+                try 
+                {
+                    string requestFileName = $"translation_request_{DateTime.Now:yyyyMMdd_HHmmss}.json";
+                    string requestPath = Path.Combine(_logsDirectory, requestFileName);
+                    
+                    File.WriteAllText(requestPath, jsonContent);
+                    LogDebug($"Full translation request saved to: {requestPath}");
+                }
+                catch (Exception ex)
+                {
+                    LogDebug($"Failed to save translation request: {ex.Message}");
+                }
+                
+                LogDebug("Sending translation request to DashScope API...");
+                string result = await SendPostRequestAsync(ApiBaseUrl, jsonContent, _apiKey);
+                
+                // Save the response to a file for inspection
+                try
+                {
+                    string responseFileName = $"translation_response_{DateTime.Now:yyyyMMdd_HHmmss}.json";
+                    string responsePath = Path.Combine(_logsDirectory, responseFileName);
+                    
+                    File.WriteAllText(responsePath, result);
+                    LogDebug($"Full translation response saved to: {responsePath}");
+                }
+                catch (Exception ex)
+                {
+                    LogDebug($"Failed to save translation response: {ex.Message}");
+                }
+                
+                LogDebug($"Translation response received (truncated): {result.Substring(0, Math.Min(500, result.Length))}...");
+                
+                try 
+                {
+                    var compatibleResponse = JsonConvert.DeserializeObject<CompatibleApiResponse>(result);
+                    if (compatibleResponse?.Choices != null && compatibleResponse.Choices.Length > 0)
+                    {
+                        LogDebug("Successfully parsed translation response");
+                        return compatibleResponse.Choices[0]?.Message?.Content ?? "Translation failed.";
+                    }
+                    else
+                    {
+                        LogDebug("Response parsing successful but no content found");
+                        return "Translation failed: No content returned.";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogDebug($"Failed to parse translation response: {ex.Message}");
+                    
+                    if (result.Contains("error"))
+                    {
+                        try
+                        {
+                            var errorResponse = JsonConvert.DeserializeObject<ErrorResponse>(result);
+                            LogDebug($"Error response parsed: {errorResponse?.Error?.Message}");
+                            return $"Error from DashScope API: {errorResponse?.Error?.Message}";
+                        }
+                        catch (Exception parseEx)
+                        {
+                            LogDebug($"Failed to parse error response: {parseEx.Message}");
+                            return $"Error from DashScope API: {result}";
+                        }
+                    }
+                    return $"Error parsing API response: {ex.Message}";
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                LogDebug("Translation request timed out after 120 seconds");
+                return "Error: Translation request timed out after 120 seconds. Please try with shorter text or try again later.";
+            }
+            catch (Exception ex)
+            {
+                LogDebug($"General translation error: {ex.GetType().Name}: {ex.Message}");
+                return $"Error performing translation: {ex.Message}";
+            }
+        }
+
+        // Method to translate text to multiple languages at once
+        public async Task<Dictionary<string, string>> TranslateTextToMultipleLanguagesAsync(string textToTranslate, List<string> targetLanguages)
+        {
+            var results = new Dictionary<string, string>();
+            
+            LogDebug($"Starting translation to multiple languages: {string.Join(", ", targetLanguages)}");
+            
+            // Process each language sequentially to avoid API rate limiting
+            foreach (var language in targetLanguages)
+            {
+                LogDebug($"Translating to {language}...");
+                string translatedText = await TranslateTextAsync(textToTranslate, language);
+                results.Add(language, translatedText);
+                
+                // Small delay between requests to avoid DashScope API rate limits
+                await Task.Delay(500);
+            }
+            
+            return results;
         }
 
         private async Task<string> SendPostRequestAsync(string url, string jsonContent, string apiKey)

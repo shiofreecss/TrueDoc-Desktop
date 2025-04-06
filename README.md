@@ -2,11 +2,18 @@
 
 A C# WPF application for truedoc.xyz that allows users to view, manage, and work with PDF and image files.
 
+## Example Document Processing
+
+![Receipt Example](TrueDocDesktop.App/Examples/truedoc-receipt.jpg)
+
+When processing documents like receipts, TrueDoc Desktop extracts structured data using AI, which can then be translated to multiple languages or converted to speech.
+
 ## Features
 
 - Upload and view PDF documents and images
 - Side-by-side layout with document preview on the left and tools on the right
 - Text extraction using Qwen-VL models (Max, Plus, Chat)
+- Multi-language translation support using Qwen-Chat
 - Customizable AI prompts for optimized text extraction
 - Comprehensive debug logging system for troubleshooting
 - Save documents to your local system

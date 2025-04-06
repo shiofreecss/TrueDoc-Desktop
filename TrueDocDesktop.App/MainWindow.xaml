@@ -179,6 +179,7 @@
                     <GroupBox x:Name="PdfOperationsGroup" Header="PDF Operations" Padding="10" Margin="0,0,0,15" Visibility="Collapsed">
                         <StackPanel>
                             <Button x:Name="BtnPdfExtract" Content="Extract Data with AI" Style="{StaticResource ButtonStyle}" Click="BtnOcr_Click" IsEnabled="False"/>
+                            <Button x:Name="BtnExtractAllContent" Content="Extract All Content" Style="{StaticResource ButtonStyle}" Click="BtnExtractAllContent_Click" IsEnabled="False"/>
                             <Button x:Name="BtnConvertToImage" Content="Convert to Image" Style="{StaticResource ButtonStyle}" Click="BtnConvertToImage_Click" IsEnabled="False"/>
                             <Button x:Name="BtnSetPassword" Content="Set Password" Style="{StaticResource ButtonStyle}" Click="BtnSetPassword_Click" IsEnabled="False"/>
                             <Button x:Name="BtnRemovePassword" Content="Remove Password" Style="{StaticResource ButtonStyle}" Click="BtnRemovePassword_Click" IsEnabled="False"/>
@@ -337,6 +338,20 @@
                                     
                                     <Button x:Name="BtnCopyResults" Content="Copy Results" 
                                             Click="BtnCopyResults_Click" 
+                                            Style="{StaticResource ButtonStyle}" 
+                                            Margin="0,0,0,5"
+                                            HorizontalAlignment="Stretch"
+                                            Width="150"/>
+                                            
+                                    <Button x:Name="BtnTextToSpeech" Content="Text to Speech" 
+                                            Click="BtnTextToSpeech_Click" 
+                                            Style="{StaticResource ButtonStyle}" 
+                                            Margin="0,0,0,5"
+                                            HorizontalAlignment="Stretch"
+                                            Width="150"/>
+                                            
+                                    <Button x:Name="BtnTranslateContent" Content="Translate Content" 
+                                            Click="BtnTranslateContent_Click" 
                                             Style="{StaticResource ButtonStyle}" 
                                             Margin="0,0,0,5"
                                             HorizontalAlignment="Stretch"

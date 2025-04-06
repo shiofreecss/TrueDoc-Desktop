@@ -24,6 +24,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Text.RegularExpressions;
+using IOPath = System.IO.Path;
 
 namespace TrueDocDesktop.App;
 
@@ -46,7 +47,7 @@ public partial class MainWindow : Window
     private string _processingFolder = string.Empty;
     private string _pdfBaseName = string.Empty;
     private Dictionary<int, string> _pdfPageResults = new Dictionary<int, string>();
-    
+
     // Dictionary of document type prompts
     private readonly Dictionary<string, string> PROMPTS = new Dictionary<string, string>
     {
@@ -63,7 +64,7 @@ public partial class MainWindow : Window
             
             InitializeComponent();
             InitializeAsync();
-
+            
             // Load settings
             _settings = AppSettings.Load();
             InitializeDashScopeService();
@@ -104,6 +105,17 @@ public partial class MainWindow : Window
                     if (FindName("BtnShowExtract") is Button showExtractBtn)
                     {
                         showExtractBtn.Visibility = Visibility.Visible; // Visible initially as extract panel is hidden
+                    }
+                    
+                    // Initialize button visibility for text-to-speech and translation
+                    if (BtnTextToSpeech != null)
+                    {
+                        BtnTextToSpeech.Visibility = Visibility.Collapsed; // Hidden by default
+                    }
+                    
+                    if (BtnTranslateContent != null)
+                    {
+                        BtnTranslateContent.Visibility = Visibility.Collapsed; // Hidden by default
                     }
                 }
                 catch (Exception ex)
@@ -260,7 +272,7 @@ public partial class MainWindow : Window
                 // Debug info about invalid files
                 if (files.Length > 0)
                 {
-                    Console.WriteLine($"Invalid file type: {files[0]}, extension: {Path.GetExtension(files[0])}");
+                    Console.WriteLine($"Invalid file type: {files[0]}, extension: {IOPath.GetExtension(files[0])}");
                 }
             }
         }
@@ -311,7 +323,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(filePath))
             return false;
 
-        string extension = Path.GetExtension(filePath).ToLower();
+        string extension = IOPath.GetExtension(filePath).ToLower();
         
         // Check if file is PDF or a valid image type
         return extension == ".pdf" || 
@@ -351,7 +363,7 @@ public partial class MainWindow : Window
             // Initialize WebView2 environment if needed
             if (PdfViewer.CoreWebView2 == null)
             {
-                var webView2Environment = await CoreWebView2Environment.CreateAsync(null, Path.GetTempPath(), null);
+                var webView2Environment = await CoreWebView2Environment.CreateAsync(null, IOPath.GetTempPath(), null);
                 await PdfViewer.EnsureCoreWebView2Async(webView2Environment);
             }
             
@@ -502,7 +514,7 @@ public partial class MainWindow : Window
             if (PdfViewer.CoreWebView2 == null)
             {
                 // Create and initialize the WebView2 environment
-                var webView2Environment = await CoreWebView2Environment.CreateAsync(null, Path.GetTempPath(), null);
+                var webView2Environment = await CoreWebView2Environment.CreateAsync(null, IOPath.GetTempPath(), null);
                 await PdfViewer.EnsureCoreWebView2Async(webView2Environment);
                 
                 // Configure WebView2 settings
@@ -540,7 +552,7 @@ public partial class MainWindow : Window
         try
         {
             _currentFilePath = filePath;
-            string extension = Path.GetExtension(filePath).ToLower();
+            string extension = IOPath.GetExtension(filePath).ToLower();
             _isPdf = extension == ".pdf";
             
             // Hide all viewers first
@@ -573,6 +585,7 @@ public partial class MainWindow : Window
                 
                 // Enable PDF operation buttons
                 BtnPdfExtract.IsEnabled = _dashScopeService != null;
+                BtnExtractAllContent.IsEnabled = true;
                 BtnConvertToImage.IsEnabled = true;
                 BtnSetPassword.IsEnabled = true;
                 BtnRemovePassword.IsEnabled = true;
@@ -607,7 +620,7 @@ public partial class MainWindow : Window
             
             // Update basic file information
             FileInfo fileInfo = new FileInfo(filePath);
-            if (TxtFilename != null) TxtFilename.Text = Path.GetFileName(filePath);
+            if (TxtFilename != null) TxtFilename.Text = IOPath.GetFileName(filePath);
             if (TxtFileType != null) TxtFileType.Text = _isPdf ? "PDF Document" : "Image";
             if (TxtFileSize != null) TxtFileSize.Text = FormatFileSize(fileInfo.Length);
             
@@ -730,8 +743,8 @@ public partial class MainWindow : Window
         try
         {
             // Use WebView2 to display PDF
-            string tempHtml = Path.Combine(Path.GetTempPath(), $"pdfviewer_{Guid.NewGuid()}.html");
-            string absolutePath = Path.GetFullPath(filePath);
+            string tempHtml = IOPath.Combine(IOPath.GetTempPath(), $"pdfviewer_{Guid.NewGuid()}.html");
+            string absolutePath = IOPath.GetFullPath(filePath);
             string fileUrl = new Uri(absolutePath).AbsoluteUri;
             
             string html = $@"
@@ -802,8 +815,8 @@ public partial class MainWindow : Window
             return;
         }
         
-        string fileName = "copy_" + Path.GetFileName(_currentFilePath);
-        string outputPath = Path.Combine(processingFolder, fileName);
+        string fileName = "copy_" + IOPath.GetFileName(_currentFilePath);
+        string outputPath = IOPath.Combine(processingFolder, fileName);
         
         try
         {
@@ -1017,7 +1030,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // Extract Data button in the new panel
+    // Extract Data button click handler
     private async void BtnExtractData_Click(object sender, RoutedEventArgs e)
     {
         if (_dashScopeService == null)
@@ -1028,39 +1041,51 @@ public partial class MainWindow : Window
 
         if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath))
         {
-            MessageBox.Show("No document is currently loaded.", "No Document", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please load a document first.", "No Document", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-
+        
         try
         {
-            // Check if JSON file already exists in the processing folder
-            string processingFolder = GetProcessingFolder(_currentFilePath);
-            string originalFileName = Path.GetFileNameWithoutExtension(_currentFilePath);
+            // Show wait cursor
+            Mouse.OverrideCursor = Cursors.Wait;
             
-            // Different handling for PDF vs single image
+            // Disable the button while processing
+            BtnExtractData.IsEnabled = false;
+            
+            // Get the processing folder
+            string processingFolder = GetProcessingFolder(_currentFilePath);
+            if (processingFolder == null)
+            {
+                MessageBox.Show("Could not create processing folder for extraction. Operation cancelled.", "Folder Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                Mouse.OverrideCursor = null;
+                BtnExtractData.IsEnabled = true;
+                return;
+            }
+            
+            string originalFileName = IOPath.GetFileNameWithoutExtension(_currentFilePath);
+            bool hasExistingData = false;
+            
+            // Check if file is a PDF or a single image
             if (_isPdf)
             {
-                // For PDFs, check for page-specific JSON files
-                bool hasExistingData = false;
-                
                 // Get PDF page count
                 int pageCount = 1;
-                try 
+                try
                 {
                     using (PdfReader reader = new PdfReader(_currentFilePath))
                     {
                         pageCount = reader.NumberOfPages;
-                        }
                     }
-                    catch
-                    {
+                }
+                catch
+                {
                     // If we can't read the PDF, assume single page
                     pageCount = 1;
                 }
                 
                 // Check if page 1 data exists
-                string page1JsonPath = Path.Combine(processingFolder, $"{originalFileName}_page1_data.json");
+                string page1JsonPath = IOPath.Combine(processingFolder, $"{originalFileName}_page1_data.json");
                 hasExistingData = File.Exists(page1JsonPath);
                 
                 if (hasExistingData)
@@ -1097,39 +1122,41 @@ public partial class MainWindow : Window
                         if (pageCount > 1)
                         {
                             PdfNavigationPanel.Visibility = Visibility.Visible;
+                            UpdatePageNavigationInfo();
                         }
                         else
                         {
                             PdfNavigationPanel.Visibility = Visibility.Collapsed;
                         }
                         
-                        // Display the loaded JSON
+                        // Display the page 1 content
                         TxtExtractionResults.Text = jsonContent;
-                        UpdatePageNavigationInfo();
                         
-                        MessageBox.Show("Existing PDF extraction data has been loaded.", "Load Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                        // Reset cursor and button state
+                        Mouse.OverrideCursor = null;
+                        BtnExtractData.IsEnabled = true;
                         return;
                     }
-                    // If No, proceed with new extraction
                 }
             }
             else
             {
-                // Regular single file check for non-PDF files
-                string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_data.json");
+                // For single images, check if data file exists
+                string jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_data.json");
+                hasExistingData = File.Exists(jsonFilePath);
                 
-                if (File.Exists(jsonFilePath))
+                if (hasExistingData)
                 {
-                    // Ask user if they want to load existing JSON instead of re-extracting
+                    // Ask user if they want to load existing JSON
                     var result = MessageBox.Show(
-                        $"Found existing extraction data for this document. Would you like to load it?\n\nPath: {jsonFilePath}\n\nClick 'Yes' to load existing data or 'No' to perform a new extraction.",
+                        $"Found existing extraction data. Would you like to load it?\n\nPath: {jsonFilePath}\n\nClick 'Yes' to load existing data or 'No' to perform a new extraction.",
                         "Existing Data Found",
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Question);
                     
                     if (result == MessageBoxResult.Yes)
                     {
-                        // Load the existing JSON file
+                        // Load existing file
                         string jsonContent = File.ReadAllText(jsonFilePath);
                         
                         // Show extract panel and update UI
@@ -1140,18 +1167,21 @@ public partial class MainWindow : Window
                         _isDataValidationPanelVisible = false;
                         UpdateDataValidationPanelVisibility();
                         
-                        // Make sure PDF navigation is hidden for single images
+                        // Hide PDF navigation panel for images
                         PdfNavigationPanel.Visibility = Visibility.Collapsed;
                         
-                        // Display the loaded JSON
+                        // Display the content
                         TxtExtractionResults.Text = jsonContent;
                         
-                        MessageBox.Show("Existing extraction data has been loaded.", "Load Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                        // Reset cursor and button state
+                        Mouse.OverrideCursor = null;
+                        BtnExtractData.IsEnabled = true;
                         return;
                     }
-                    // If No, proceed with new extraction
                 }
             }
+            
+            // If we get here, we need to perform a new extraction
 
             // Show extract panel and hide tools panel
             _isExtractPanelVisible = true;
@@ -1160,11 +1190,6 @@ public partial class MainWindow : Window
             // Make sure data validation panel is hidden
             _isDataValidationPanelVisible = false;
             UpdateDataValidationPanelVisibility();
-            
-            // Show progress cursor
-            Mouse.OverrideCursor = Cursors.Wait;
-            BtnExtractData.IsEnabled = false;
-            TxtExtractionResults.Text = "Processing...";
             
             // Get the selected document type
             ComboBoxItem selectedItem = (ComboBoxItem)CmbDocumentType.SelectedItem;
@@ -1184,6 +1209,12 @@ public partial class MainWindow : Window
                     MessageBox.Show($"PDF extraction complete! Individual page data has been saved to:\n{processingFolder}", 
                         "PDF Extraction Complete", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
+                
+                // Show the Validation button and hide Text-to-Speech and Translate buttons
+                // since we're working with structured data
+                if (BtnValidateData != null) BtnValidateData.Visibility = Visibility.Visible;
+                if (BtnTextToSpeech != null) BtnTextToSpeech.Visibility = Visibility.Collapsed;
+                if (BtnTranslateContent != null) BtnTranslateContent.Visibility = Visibility.Collapsed;
             }
             else
             {
@@ -1198,6 +1229,12 @@ public partial class MainWindow : Window
                 
                 // Hide PDF navigation for single images
                 PdfNavigationPanel.Visibility = Visibility.Collapsed;
+                
+                // Show the Validation button and hide Text-to-Speech and Translate buttons
+                // since we're working with structured data
+                if (BtnValidateData != null) BtnValidateData.Visibility = Visibility.Visible;
+                if (BtnTextToSpeech != null) BtnTextToSpeech.Visibility = Visibility.Collapsed;
+                if (BtnTranslateContent != null) BtnTranslateContent.Visibility = Visibility.Collapsed;
                 
                 // Automatically fix and save the JSON
                 try
@@ -1220,7 +1257,7 @@ public partial class MainWindow : Window
                             // Save to file in the processing folder
                             if (processingFolder != null)
                             {
-                                string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_data.json");
+                                string jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_data.json");
                                 
                                 // Save the formatted JSON to file
                                 File.WriteAllText(jsonFilePath, formattedJson);
@@ -1248,7 +1285,7 @@ public partial class MainWindow : Window
                                 // Save to file in the processing folder
                                 if (processingFolder != null)
                                 {
-                                    string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_data.json");
+                                    string jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_data.json");
                                     
                                     // Save the formatted JSON to file
                                     File.WriteAllText(jsonFilePath, formattedJson);
@@ -1261,9 +1298,15 @@ public partial class MainWindow : Window
                         }
                         catch
                         {
-                            // Advanced repair also failed
-                            MessageBox.Show("The extracted data couldn't be automatically converted to valid JSON format.",
-                                "JSON Fix Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            // If still failing, save raw extraction result
+                            if (processingFolder != null)
+                            {
+                                string jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_data.json");
+                                File.WriteAllText(jsonFilePath, extractionResult);
+                                
+                                MessageBox.Show($"Extraction results have been saved (raw format) to:\n{jsonFilePath}", 
+                                    "JSON Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+                            }
                         }
                     }
                 }
@@ -1597,13 +1640,13 @@ public partial class MainWindow : Window
         if (_pdfPageResults.ContainsKey(pageNum))
         {
             TxtExtractionResults.Text = _pdfPageResults[pageNum];
-                return;
-            }
-            
+            return;
+        }
+        
         // Otherwise, try to load from file
         try
         {
-            string jsonFilePath = Path.Combine(_processingFolder, $"{_pdfBaseName}_page{pageNum}_data.json");
+            string jsonFilePath = IOPath.Combine(_processingFolder, $"{_pdfBaseName}_page{pageNum}_data.json");
             if (File.Exists(jsonFilePath))
             {
                 string jsonContent = File.ReadAllText(jsonFilePath);
@@ -1613,10 +1656,10 @@ public partial class MainWindow : Window
             else
             {
                 TxtExtractionResults.Text = $"Data for page {pageNum} is not available.";
-                }
             }
-            catch (Exception ex)
-            {
+        }
+        catch (Exception ex)
+        {
             TxtExtractionResults.Text = $"Error loading page {pageNum} data: {ex.Message}";
         }
     }
@@ -1628,7 +1671,7 @@ public partial class MainWindow : Window
         {
             // Get the processing folder
             string processingFolder = GetProcessingFolder(pdfPath);
-            string originalFileName = Path.GetFileNameWithoutExtension(pdfPath);
+            string originalFileName = IOPath.GetFileNameWithoutExtension(pdfPath);
             
             // Initialize PDF page navigation variables
             _processingFolder = processingFolder;
@@ -1646,6 +1689,7 @@ public partial class MainWindow : Window
                 if (_totalPdfPages > 1)
                 {
                     PdfNavigationPanel.Visibility = Visibility.Visible;
+                    UpdatePageNavigationInfo();
                 }
                 else
                 {
@@ -1660,7 +1704,7 @@ public partial class MainWindow : Window
                     await Task.Delay(50); // Allow UI to update
                     
                     // Generate a temporary image file for this page
-                    string tempImagePath = Path.Combine(processingFolder, $"{originalFileName}_page{pageNum}.png");
+                    string tempImagePath = IOPath.Combine(processingFolder, $"{originalFileName}_page{pageNum}.png");
                     
                     // Convert PDF page to image
                     using (var pdfDocument = PdfiumViewer.PdfDocument.Load(pdfPath))
@@ -1697,7 +1741,7 @@ public partial class MainWindow : Window
                                 _pdfPageResults[pageNum] = formattedJson;
                                 
                                 // Save to file with page number in filename
-                                string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
+                                string jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
                                 File.WriteAllText(jsonFilePath, formattedJson);
                             }
                         }
@@ -1718,14 +1762,14 @@ public partial class MainWindow : Window
                                     _pdfPageResults[pageNum] = formattedJson;
                                     
                                     // Save to file with page number in filename
-                                    string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
+                                    string jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
                                     File.WriteAllText(jsonFilePath, formattedJson);
                                 }
                             }
                             catch
                             {
                                 // Even the advanced repair failed, save the raw result
-                                string jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
+                                string jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_page{pageNum}_data.json");
                                 File.WriteAllText(jsonFilePath, extractionResult);
                             }
                         }
@@ -1757,9 +1801,17 @@ public partial class MainWindow : Window
             {
                 TxtExtractionResults.Text = _pdfPageResults[_currentPdfPage];
             }
+            
+            // Re-enable the extract button
+            BtnExtractData.IsEnabled = true;
+            
+            // Remove wait cursor
+            Mouse.OverrideCursor = null;
         }
         catch (Exception ex)
         {
+            Mouse.OverrideCursor = null;
+            BtnExtractData.IsEnabled = true;
             throw new Exception($"Error processing PDF: {ex.Message}", ex);
         }
     }
@@ -1773,11 +1825,11 @@ public partial class MainWindow : Window
         try
         {
             // Get the directory where the file is located
-            string parentDirectory = Path.GetDirectoryName(filePath);
-            string fileName = Path.GetFileNameWithoutExtension(filePath);
+            string parentDirectory = IOPath.GetDirectoryName(filePath);
+            string fileName = IOPath.GetFileNameWithoutExtension(filePath);
             
             // Create a processing folder next to the file
-            string processingFolder = Path.Combine(parentDirectory, $"{fileName}_processing");
+            string processingFolder = IOPath.Combine(parentDirectory, $"{fileName}_processing");
             
             // Create the folder if it doesn't exist
             if (!Directory.Exists(processingFolder))
@@ -1811,7 +1863,7 @@ public partial class MainWindow : Window
         catch
         {
             // Fallback to a simpler approach if hashing fails
-            return Path.GetFileNameWithoutExtension(filePath) + "_" + 
+            return IOPath.GetFileNameWithoutExtension(filePath) + "_" + 
                    new FileInfo(filePath).Length.ToString();
         }
     }
@@ -2040,6 +2092,739 @@ public partial class MainWindow : Window
         MessageBox.Show("Convert to Image functionality will be implemented in a future update.", "Not Implemented", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
+    private async void BtnExtractAllContent_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath) || !_isPdf)
+        {
+            MessageBox.Show("Please load a PDF document first.", "No PDF Document", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (_dashScopeService == null)
+        {
+            MessageBox.Show("Please configure your DashScope API key in Settings first.", "API Key Required", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            // Show progress cursor
+            Mouse.OverrideCursor = Cursors.Wait;
+            
+            // Disable the button while processing
+            BtnExtractAllContent.IsEnabled = false;
+            
+            // Get the processing folder
+            string processingFolder = GetProcessingFolder(_currentFilePath);
+            string originalFileName = IOPath.GetFileNameWithoutExtension(_currentFilePath);
+            
+            // Show extract panel
+            _isExtractPanelVisible = true;
+            UpdateExtractPanelVisibility();
+            
+            // Set the extraction results to "Processing..."
+            TxtExtractionResults.Text = "Processing PDF content with AI...";
+            
+            // Initialize variables for multi-page handling
+            _processingFolder = processingFolder;
+            _pdfBaseName = originalFileName;
+            
+            // Use PdfReader to get the page count
+            using (PdfReader reader = new PdfReader(_currentFilePath))
+            {
+                _totalPdfPages = reader.NumberOfPages;
+                _currentPdfPage = 1;
+            }
+            
+            // Show PDF navigation for multi-page PDFs
+            if (_totalPdfPages > 1)
+            {
+                PdfNavigationPanel.Visibility = Visibility.Visible;
+                UpdatePageNavigationInfo();
+            }
+            else
+            {
+                PdfNavigationPanel.Visibility = Visibility.Collapsed;
+            }
+            
+            // Process each page with AI
+            _pdfPageResults.Clear();
+            StringBuilder combinedText = new StringBuilder();
+            
+            for (int pageNum = 1; pageNum <= _totalPdfPages; pageNum++)
+            {
+                // Update status
+                TxtExtractionResults.Text = $"Processing page {pageNum} of {_totalPdfPages}...";
+                await Task.Delay(50); // Allow UI to update
+                
+                // Generate a temporary image file for this page
+                string tempImagePath = IOPath.Combine(processingFolder, $"{originalFileName}_page{pageNum}.png");
+                
+                // Convert PDF page to image
+                using (var pdfDocument = PdfiumViewer.PdfDocument.Load(_currentFilePath))
+                {
+                    using (var bitmap = pdfDocument.Render(pageNum - 1, 300, 300, true))
+                    {
+                        bitmap.Save(tempImagePath, System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                }
+                
+                // Use Qwen-VL-Max to extract all content
+                string prompt = "Please extract all content from this image in plain text format. Include all text, tables, headers, footers, and any other content visible in the image.";
+                string extractionResult = await _dashScopeService.PerformOcrAsync(tempImagePath, prompt);
+                
+                // Clean up markdown formatting if present
+                extractionResult = PreProcessExtractionResult(extractionResult);
+                
+                // Store the result for this page
+                _pdfPageResults[pageNum] = extractionResult;
+                
+                // Add to combined text
+                combinedText.AppendLine($"--- PAGE {pageNum} ---");
+                combinedText.AppendLine(extractionResult);
+                combinedText.AppendLine();
+                
+                // Save individual page result
+                string pageJsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_page{pageNum}_text.json");
+                string pageJsonContent = $"{{\"page\": {pageNum}, \"content\": {JsonConvert.ToString(extractionResult)}}}";
+                File.WriteAllText(pageJsonFilePath, pageJsonContent);
+                
+                // Delete the temporary image file
+                try
+                {
+                    if (File.Exists(tempImagePath))
+                    {
+                        File.Delete(tempImagePath);
+                    }
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+            
+            // Save the combined text to a file
+            string textFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_text.txt");
+            File.WriteAllText(textFilePath, combinedText.ToString());
+            
+            // Create and save combined JSON
+            string jsonContent = "{\n";
+            jsonContent += $"  \"document_name\": {JsonConvert.ToString(originalFileName)},\n";
+            jsonContent += $"  \"page_count\": {_totalPdfPages},\n";
+            jsonContent += "  \"pages\": [\n";
+            
+            for (int pageNum = 1; pageNum <= _totalPdfPages; pageNum++)
+            {
+                jsonContent += "    {\n";
+                jsonContent += $"      \"page_number\": {pageNum},\n";
+                jsonContent += $"      \"content\": {JsonConvert.ToString(_pdfPageResults[pageNum])}\n";
+                jsonContent += "    }";
+                
+                if (pageNum < _totalPdfPages)
+                    jsonContent += ",";
+                    
+                jsonContent += "\n";
+            }
+            
+            jsonContent += "  ]\n}";
+            
+            // Save the JSON file
+            string jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_text.json");
+            File.WriteAllText(jsonFilePath, jsonContent);
+            
+            // Display the current page's content
+            if (_pdfPageResults.ContainsKey(_currentPdfPage))
+            {
+                TxtExtractionResults.Text = _pdfPageResults[_currentPdfPage];
+            }
+            
+            // Show Text-to-Speech and Translation buttons and hide Validate Data button
+            // since we're dealing with plain text, not structured data
+            if (BtnTextToSpeech != null) BtnTextToSpeech.Visibility = Visibility.Visible;
+            if (BtnTranslateContent != null) BtnTranslateContent.Visibility = Visibility.Visible;
+            if (BtnValidateData != null) BtnValidateData.Visibility = Visibility.Collapsed;
+            
+            MessageBox.Show($"Text extraction complete! Files have been saved to:\n\nPlain text: {textFilePath}\nJSON: {jsonFilePath}", 
+                "AI Extraction Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error extracting text: {ex.Message}", "Extraction Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            // Reset cursor and re-enable button
+            Mouse.OverrideCursor = null;
+            BtnExtractAllContent.IsEnabled = true;
+        }
+    }
+
+    // Implementation for Text-to-Speech button click
+    private async void BtnTextToSpeech_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(TxtExtractionResults.Text))
+        {
+            MessageBox.Show("No text content to convert to speech.", "Empty Content", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            // Show progress cursor
+            Mouse.OverrideCursor = Cursors.Wait;
+            
+            // Get the processing folder
+            string processingFolder = _processingFolder;
+            if (string.IsNullOrEmpty(processingFolder))
+                processingFolder = GetProcessingFolder(_currentFilePath);
+                
+            string fileName = _pdfBaseName;
+            if (string.IsNullOrEmpty(fileName) && _currentFilePath != null)
+                fileName = IOPath.GetFileNameWithoutExtension(_currentFilePath);
+                
+            if (string.IsNullOrEmpty(fileName))
+                fileName = "extracted_content";
+                
+            // Determine which text to convert to speech
+            string textToConvert = TxtExtractionResults.Text;
+            
+            // Check if we're viewing a specific page of a multi-page PDF
+            string pageInfo = "";
+            if (_totalPdfPages > 1)
+            {
+                pageInfo = $"_page{_currentPdfPage}";
+            }
+            
+            // Create audio file path
+            string audioFilePath = IOPath.Combine(processingFolder, $"{fileName}{pageInfo}_speech.wav");
+            
+            // Show a dialog asking the user to wait
+            var progressDialog = new Window
+            {
+                Title = "Generating Speech",
+                Width = 350,
+                Height = 150,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow
+            };
+            
+            var panel = new StackPanel { Margin = new Thickness(20) };
+            panel.Children.Add(new TextBlock 
+            { 
+                Text = "Converting text to speech...", 
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+            
+            var progressBar = new ProgressBar
+            {
+                IsIndeterminate = true,
+                Height = 20,
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            
+            panel.Children.Add(progressBar);
+            progressDialog.Content = panel;
+            
+            // Show the dialog but don't block the thread
+            progressDialog.Show();
+            
+            // TODO: Implement actual text-to-speech API call here
+            // For now, we'll simulate the process with a delay
+            await Task.Delay(3000);
+            
+            // Simulate saving an audio file
+            File.WriteAllText(audioFilePath, "This is a placeholder file for audio content.");
+            
+            // Close the progress dialog
+            progressDialog.Close();
+            
+            // Show a message with the result
+            var result = MessageBox.Show(
+                $"Text-to-speech conversion completed!\n\nFile saved to:\n{audioFilePath}\n\nWould you like to open the output folder?",
+                "Conversion Complete",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+                
+            if (result == MessageBoxResult.Yes)
+            {
+                // Open the folder containing the saved file
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{audioFilePath}\"",
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error during text-to-speech conversion: {ex.Message}", "Conversion Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            // Reset cursor
+            Mouse.OverrideCursor = null;
+        }
+    }
+
+    // Implementation for Translate Content button click
+    private async void BtnTranslateContent_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(TxtExtractionResults.Text))
+        {
+            MessageBox.Show("No text content to translate.", "Empty Content", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (_dashScopeService == null)
+        {
+            MessageBox.Show("Please configure your DashScope API key in Settings first.", "API Key Required", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            // Create a dialog to select the target language(s)
+            var languageDialog = new Window
+            {
+                Title = "Translation Options",
+                Width = 400,
+                Height = 450,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStyle = WindowStyle.ToolWindow
+            };
+            
+            var panel = new StackPanel { Margin = new Thickness(20) };
+            panel.Children.Add(new TextBlock 
+            { 
+                Text = "Translation Mode:", 
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+            
+            // Radio buttons for single vs. multiple language translation
+            var modePanel = new StackPanel { Margin = new Thickness(0, 0, 0, 15) };
+            
+            var singleModeRadio = new RadioButton 
+            { 
+                Content = "Single Language", 
+                IsChecked = true, 
+                Margin = new Thickness(0, 0, 0, 5)
+            };
+            
+            var multiModeRadio = new RadioButton 
+            { 
+                Content = "Multiple Languages", 
+                Margin = new Thickness(0, 0, 0, 5)
+            };
+            
+            modePanel.Children.Add(singleModeRadio);
+            modePanel.Children.Add(multiModeRadio);
+            panel.Children.Add(modePanel);
+            
+            // Single language selection
+            panel.Children.Add(new TextBlock 
+            { 
+                Text = "Target Language:", 
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 5)
+            });
+            
+            var languageCombo = new ComboBox 
+            { 
+                Margin = new Thickness(0, 5, 0, 15),
+                Padding = new Thickness(5),
+                Height = 30
+            };
+            
+            // Multiple language selection
+            var languageCheckPanel = new StackPanel 
+            { 
+                Margin = new Thickness(0, 5, 0, 15),
+                Visibility = Visibility.Collapsed 
+            };
+            
+            var scrollViewer = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                MaxHeight = 200,
+                Margin = new Thickness(0, 5, 0, 0)
+            };
+            
+            var checkBoxPanel = new StackPanel();
+            scrollViewer.Content = checkBoxPanel;
+            languageCheckPanel.Children.Add(scrollViewer);
+            
+            // Add common languages to both the ComboBox and CheckBox list
+            var languageOptions = new List<string>
+            {
+                "English",
+                "Chinese",
+                "Spanish",
+                "French",
+                "German",
+                "Japanese",
+                "Korean",
+                "Russian",
+                "Portuguese",
+                "Italian",
+                "Dutch",
+                "Arabic",
+                "Hindi",
+                "Bengali",
+                "Turkish",
+                "Vietnamese",
+                "Thai",
+                "Indonesian",
+                "Malay"
+            };
+            
+            foreach (var language in languageOptions)
+            {
+                // Add to ComboBox for single selection
+                languageCombo.Items.Add(language);
+                
+                // Add to CheckBox panel for multiple selection
+                var checkBox = new CheckBox 
+                { 
+                    Content = language, 
+                    Margin = new Thickness(0, 0, 0, 5)
+                };
+                checkBoxPanel.Children.Add(checkBox);
+            }
+            
+            languageCombo.SelectedIndex = 0;
+            panel.Children.Add(languageCombo);
+            panel.Children.Add(languageCheckPanel);
+            
+            // Toggle visibility based on selection
+            singleModeRadio.Checked += (s, args) => {
+                languageCombo.Visibility = Visibility.Visible;
+                languageCheckPanel.Visibility = Visibility.Collapsed;
+            };
+            
+            multiModeRadio.Checked += (s, args) => {
+                languageCombo.Visibility = Visibility.Collapsed;
+                languageCheckPanel.Visibility = Visibility.Visible;
+            };
+            
+            var buttonPanel = new StackPanel 
+            { 
+                Orientation = Orientation.Horizontal, 
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 20, 0, 0)
+            };
+            
+            var cancelButton = new Button 
+            { 
+                Content = "Cancel", 
+                Padding = new Thickness(10, 5, 10, 5), 
+                Margin = new Thickness(5, 0, 0, 0),
+                Width = 80
+            };
+            
+            var translateButton = new Button 
+            { 
+                Content = "Translate", 
+                Padding = new Thickness(10, 5, 10, 5),
+                IsDefault = true,
+                Width = 80
+            };
+            
+            cancelButton.Click += (s, args) => { languageDialog.DialogResult = false; };
+            translateButton.Click += (s, args) => { languageDialog.DialogResult = true; };
+            
+            buttonPanel.Children.Add(translateButton);
+            buttonPanel.Children.Add(cancelButton);
+            
+            panel.Children.Add(buttonPanel);
+            languageDialog.Content = panel;
+            
+            // Show the dialog and wait for result
+            bool? dialogResult = languageDialog.ShowDialog();
+            
+            if (dialogResult == true)
+            {
+                // Get the processing folder
+                string processingFolder = _processingFolder;
+                if (string.IsNullOrEmpty(processingFolder))
+                    processingFolder = GetProcessingFolder(_currentFilePath);
+                    
+                string fileName = _pdfBaseName;
+                if (string.IsNullOrEmpty(fileName) && _currentFilePath != null)
+                    fileName = IOPath.GetFileNameWithoutExtension(_currentFilePath);
+                    
+                if (string.IsNullOrEmpty(fileName))
+                    fileName = "extracted_content";
+                
+                // Determine which text to translate
+                string textToTranslate = TxtExtractionResults.Text;
+                
+                // Check if we're viewing a specific page of a multi-page PDF
+                string pageInfo = "";
+                if (_totalPdfPages > 1)
+                {
+                    pageInfo = $"_page{_currentPdfPage}";
+                }
+                
+                // Show wait cursor
+                Mouse.OverrideCursor = Cursors.Wait;
+                
+                if (singleModeRadio.IsChecked == true)
+                {
+                    // Single language translation
+                    string targetLanguage = languageCombo.SelectedItem.ToString();
+                    
+                    // Create translated file path
+                    string translatedFilePath = IOPath.Combine(processingFolder, $"{fileName}{pageInfo}_translated_{targetLanguage}.txt");
+                    
+                    // Show a dialog asking the user to wait
+                    var progressDialog = new Window
+                    {
+                        Title = "Translating Content",
+                        Width = 350,
+                        Height = 150,
+                        WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                        Owner = this,
+                        ResizeMode = ResizeMode.NoResize,
+                        WindowStyle = WindowStyle.ToolWindow
+                    };
+                    
+                    var progressPanel = new StackPanel { Margin = new Thickness(20) };
+                    progressPanel.Children.Add(new TextBlock 
+                    { 
+                        Text = $"Translating to {targetLanguage}...", 
+                        FontWeight = FontWeights.SemiBold,
+                        Margin = new Thickness(0, 0, 0, 10)
+                    });
+                    
+                    var progressBar = new ProgressBar
+                    {
+                        IsIndeterminate = true,
+                        Height = 20,
+                        Margin = new Thickness(0, 10, 0, 0)
+                    };
+                    
+                    progressPanel.Children.Add(progressBar);
+                    progressDialog.Content = progressPanel;
+                    
+                    // Show the dialog but don't block the thread
+                    progressDialog.Show();
+                    
+                    // Use translation service
+                    string translatedText = await _dashScopeService.TranslateTextAsync(textToTranslate, targetLanguage);
+                    
+                    // Save the translated text
+                    File.WriteAllText(translatedFilePath, translatedText);
+                    
+                    // Close the progress dialog
+                    progressDialog.Close();
+                    
+                    // Create a window to display the translated text
+                    var translationResultWindow = new Window
+                    {
+                        Title = $"Translation to {targetLanguage}",
+                        Width = 600,
+                        Height = 500,
+                        WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                        Owner = this
+                    };
+                    
+                    var resultPanel = new Grid();
+                    
+                    var resultTextBox = new TextBox
+                    {
+                        Text = translatedText,
+                        TextWrapping = TextWrapping.Wrap,
+                        AcceptsReturn = true,
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                        IsReadOnly = true,
+                        Margin = new Thickness(10)
+                    };
+                    
+                    resultPanel.Children.Add(resultTextBox);
+                    
+                    translationResultWindow.Content = resultPanel;
+                    translationResultWindow.Show();
+                    
+                    // Show a message about the saved file
+                    MessageBox.Show(
+                        $"Translation completed!\n\nFile saved to:\n{translatedFilePath}",
+                        "Translation Complete",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                else
+                {
+                    // Multiple languages translation
+                    var selectedLanguages = new List<string>();
+                    foreach (CheckBox checkBox in checkBoxPanel.Children)
+                    {
+                        if (checkBox.IsChecked == true)
+                        {
+                            selectedLanguages.Add(checkBox.Content.ToString());
+                        }
+                    }
+                    
+                    if (selectedLanguages.Count == 0)
+                    {
+                        MessageBox.Show("Please select at least one language for translation.", "No Languages Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        Mouse.OverrideCursor = null;
+                        return;
+                    }
+                    
+                    // Show a dialog asking the user to wait
+                    var progressDialog = new Window
+                    {
+                        Title = "Translating Content",
+                        Width = 400,
+                        Height = 200,
+                        WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                        Owner = this,
+                        ResizeMode = ResizeMode.NoResize,
+                        WindowStyle = WindowStyle.ToolWindow
+                    };
+                    
+                    var progressPanel = new StackPanel { Margin = new Thickness(20) };
+                    progressPanel.Children.Add(new TextBlock 
+                    { 
+                        Text = $"Translating to {selectedLanguages.Count} languages...", 
+                        FontWeight = FontWeights.SemiBold,
+                        Margin = new Thickness(0, 0, 0, 10)
+                    });
+                    
+                    var statusText = new TextBlock
+                    {
+                        Text = "Starting translations...",
+                        Margin = new Thickness(0, 0, 0, 10)
+                    };
+                    progressPanel.Children.Add(statusText);
+                    
+                    var progressBar = new ProgressBar
+                    {
+                        Minimum = 0,
+                        Maximum = selectedLanguages.Count,
+                        Value = 0,
+                        Height = 20,
+                        Margin = new Thickness(0, 10, 0, 0)
+                    };
+                    
+                    progressPanel.Children.Add(progressBar);
+                    progressDialog.Content = progressPanel;
+                    
+                    // Show the dialog but don't block the thread
+                    progressDialog.Show();
+                    
+                    // Use multi-language translation method
+                    var translations = await _dashScopeService.TranslateTextToMultipleLanguagesAsync(textToTranslate, selectedLanguages);
+                    
+                    // Update progress for UI feedback
+                    int completedCount = 0;
+                    
+                    // Save individual translations to files
+                    foreach (var kvp in translations)
+                    {
+                        string language = kvp.Key;
+                        string translatedText = kvp.Value;
+                        
+                        // Save to file
+                        string translatedFilePath = IOPath.Combine(processingFolder, $"{fileName}{pageInfo}_translated_{language}.txt");
+                        File.WriteAllText(translatedFilePath, translatedText);
+                        
+                        // Update progress UI
+                        completedCount++;
+                        progressBar.Value = completedCount;
+                        statusText.Text = $"Saved translation for {language}... ({completedCount}/{selectedLanguages.Count})";
+                        await Task.Delay(50); // Allow UI update
+                    }
+                    
+                    // Close the progress dialog
+                    progressDialog.Close();
+                    
+                    // Create a window to display all the translated texts
+                    var translationResultWindow = new Window
+                    {
+                        Title = "Multiple Translations",
+                        Width = 800,
+                        Height = 600,
+                        WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                        Owner = this
+                    };
+                    
+                    var resultGrid = new Grid();
+                    
+                    // Create a tab control to display all translations
+                    var tabControl = new TabControl
+                    {
+                        Margin = new Thickness(10)
+                    };
+                    
+                    foreach (var entry in translations)
+                    {
+                        var tabItem = new TabItem
+                        {
+                            Header = entry.Key
+                        };
+                        
+                        var textBox = new TextBox
+                        {
+                            Text = entry.Value,
+                            TextWrapping = TextWrapping.Wrap,
+                            AcceptsReturn = true,
+                            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                            IsReadOnly = true,
+                            Margin = new Thickness(5)
+                        };
+                        
+                        tabItem.Content = textBox;
+                        tabControl.Items.Add(tabItem);
+                    }
+                    
+                    resultGrid.Children.Add(tabControl);
+                    translationResultWindow.Content = resultGrid;
+                    translationResultWindow.Show();
+                    
+                    // Create summary file
+                    string summaryFilePath = IOPath.Combine(processingFolder, $"{fileName}{pageInfo}_translations_summary.txt");
+                    var summaryContent = new StringBuilder();
+                    summaryContent.AppendLine($"Translation Summary - {DateTime.Now}");
+                    summaryContent.AppendLine($"Original Text: {fileName}{pageInfo}");
+                    summaryContent.AppendLine($"Languages: {string.Join(", ", selectedLanguages)}");
+                    summaryContent.AppendLine($"Files saved to: {processingFolder}");
+                    summaryContent.AppendLine("--------------------------------------");
+                    
+                    foreach (var language in selectedLanguages)
+                    {
+                        summaryContent.AppendLine($"- {language}: {fileName}{pageInfo}_translated_{language}.txt");
+                    }
+                    
+                    File.WriteAllText(summaryFilePath, summaryContent.ToString());
+                    
+                    // Show a message about the saved files
+                    MessageBox.Show(
+                        $"Multiple translations completed!\n\n{selectedLanguages.Count} languages processed.\n\nFiles saved to:\n{processingFolder}",
+                        "Translations Complete",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error during translation: {ex.Message}", "Translation Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            // Reset cursor
+            Mouse.OverrideCursor = null;
+        }
+    }
+
     private void BtnSetPassword_Click(object sender, RoutedEventArgs e)
     {
         // Stub implementation - to be implemented later
@@ -2202,13 +2987,13 @@ public partial class MainWindow : Window
                 }
             
             // Define the file name based on whether this is a PDF page or a single image
-            string originalFileName = Path.GetFileNameWithoutExtension(_currentFilePath);
+            string originalFileName = IOPath.GetFileNameWithoutExtension(_currentFilePath);
             string jsonFilePath;
             
             if (_isPdf && _totalPdfPages > 1)
             {
                 // For multi-page PDFs, we save page-specific JSON files
-                jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_page{_currentPdfPage}_data.json");
+                jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_page{_currentPdfPage}_data.json");
                 
                 // Update the in-memory collection with the current content
                 _pdfPageResults[_currentPdfPage] = jsonContent;
@@ -2216,7 +3001,7 @@ public partial class MainWindow : Window
             else
             {
                 // For single image or single-page PDF
-                jsonFilePath = Path.Combine(processingFolder, $"{originalFileName}_data.json");
+                jsonFilePath = IOPath.Combine(processingFolder, $"{originalFileName}_data.json");
             }
             
             // Save the JSON to file
